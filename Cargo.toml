@@ -1,0 +1,11 @@
+[package]
+name = "floppy-bus"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["staticlib"]
+path = "src/lib.rs"
+
+[dependencies]
+teensycore = { path = "../teensycore" }
