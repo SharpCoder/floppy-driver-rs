@@ -44,12 +44,12 @@ impl FloppyDriver {
         // Create a generic configuration for normal pins
         let generic_config: PadConfig = PadConfig {
             hysterisis: false,
-            resistance: PullUpDown::PullDown100k,
+            resistance: PullUpDown::PullUp100k,
             pull_keep: PullKeep::Pull,
-            pull_keep_en: true,
+            pull_keep_en: false,
             open_drain: false,
             speed: PinSpeed::Fast150MHz,
-            drive_strength: DriveStrength::MaxDiv3,
+            drive_strength: DriveStrength::Max,
             fast_slew_rate: true,
         };
 
@@ -61,21 +61,21 @@ impl FloppyDriver {
         pin_pad_config(gate_pin, generic_config.clone());
         pin_pad_config(head_sel_pin, generic_config.clone());
 
-        pin_out(drive_pin, Power::High);
-        pin_out(motor_pin, Power::High);
-        pin_out(dir_pin, Power::High);
-        pin_out(step_pin, Power::High);
-        pin_out(write_pin, Power::High);
-        pin_out(gate_pin, Power::High);
-        pin_out(head_sel_pin, Power::High);
-
         pin_mode(drive_pin, Mode::Output);
         pin_mode(motor_pin, Mode::Output);
         pin_mode(dir_pin, Mode::Output);
         pin_mode(step_pin, Mode::Output);
+        pin_mode(head_sel_pin, Mode::Output);
         pin_mode(write_pin, Mode::Output);
         pin_mode(gate_pin, Mode::Output);
-        pin_mode(head_sel_pin, Mode::Output);
+
+        pin_out(drive_pin, Power::High);
+        pin_out(motor_pin, Power::High);
+        pin_out(dir_pin, Power::High);
+        pin_out(step_pin, Power::High);
+        pin_out(head_sel_pin, Power::High);
+        pin_out(write_pin, Power::High);
+        pin_out(gate_pin, Power::High);
 
         // Create a generic configuration for pullup resistors
         let pullup_config: PadConfig = PadConfig {
@@ -83,17 +83,31 @@ impl FloppyDriver {
             resistance: PullUpDown::PullUp22k,
             pull_keep: PullKeep::Pull,
             pull_keep_en: true,
-            open_drain: false,
+            open_drain: true,
             speed: PinSpeed::Fast150MHz,
-            drive_strength: DriveStrength::MaxDiv2,
+            drive_strength: DriveStrength::Max,
             fast_slew_rate: true,
         };
 
         pin_pad_config(index_pin, pullup_config.clone());
         pin_pad_config(track00_pin, pullup_config.clone());
         pin_pad_config(write_protect_pin, pullup_config.clone());
-        pin_pad_config(read_pin, pullup_config.clone());
         pin_pad_config(disk_change_pin, pullup_config.clone());
+
+        // Read pin speciality
+        pin_pad_config(
+            read_pin,
+            PadConfig {
+                hysterisis: false,
+                resistance: PullUpDown::PullUp100k,
+                pull_keep: PullKeep::Pull,
+                pull_keep_en: false,
+                open_drain: true,
+                speed: PinSpeed::Fast150MHz,
+                drive_strength: DriveStrength::MaxDiv7,
+                fast_slew_rate: true,
+            },
+        );
 
         // Set them to outputs
         pin_mode(index_pin, Mode::Input);
@@ -146,14 +160,15 @@ impl FloppyDriver {
             pin_out(self.drive_pin, Power::High);
             pin_out(self.head_sel_pin, Power::High);
             pin_out(self.motor_pin, Power::High);
-            wait_exact_ns(MS_TO_NANO * 2500);
+            pin_out(self.gate_pin, Power::High);
+            wait_exact_ns(MS_TO_NANO * 3000);
             pin_out(self.drive_pin, Power::Low);
-            pin_out(self.head_sel_pin, Power::Low);
+            pin_out(self.head_sel_pin, Power::High);
             pin_out(self.motor_pin, Power::Low);
-            wait_exact_ns(MS_TO_NANO * 100);
+            wait_exact_ns(MS_TO_NANO * 1000);
+        } else {
+            pin_out(self.motor_pin, Power::High);
         }
-
-        pin_out(self.motor_pin, bool_to_power(!on));
 
         if !on {
             debug_str(b"Shutting down motor");
@@ -164,12 +179,13 @@ impl FloppyDriver {
         debug_str(b"Waiting for index pulse...");
 
         let start = nanos();
-        while pin_read(self.index_pin) > 0 && (nanos() - start) < 2000 * MS_TO_NANO {
+        while pin_read(self.index_pin) > 0 && (nanos() - start) < 10000 * MS_TO_NANO {
             assembly!("nop");
         }
 
         if pin_read(self.index_pin) == 0 {
             debug_str(b"Received index pulse!");
+            wait_exact_ns(MS_TO_NANO * 5000);
         } else {
             debug_str(b"Did not receive index pulse");
             self.motor_active = false;
@@ -190,10 +206,6 @@ impl FloppyDriver {
     pub fn read_track(&mut self) {
         self.motor_on(true);
 
-        let mut prev: u32 = 0;
-        let mut prev_t: uNano = 0;
-        let mut low: u32 = 0;
-        let mut high: u32 = 0;
         let mut pulses: u32 = 0;
 
         // Wait for an index pulse
@@ -201,41 +213,28 @@ impl FloppyDriver {
         while pin_read(self.index_pin) == 0 {}
 
         // Begin
-        let start = nanos();
-        while pin_read(self.index_pin) != 0 {
-            let signal = pin_read(self.read_pin);
-            if signal != prev {
-                if signal != 0 {
-                    high += 1;
-                } else {
-                    low += 1;
-                }
+        let start = nanos() / MS_TO_NANO;
 
-                prev = signal;
-                if nanos() - prev_t < 2000 {
-                    pulses += 1;
-                }
-                prev_t = nanos();
+        while pin_read(self.index_pin) != 0 {
+            if pin_read(self.read_pin) == 0 {
+                while pin_read(self.read_pin) == 0 {}
+                pulses += 1;
             }
         }
 
-        let end = nanos();
+        let end = nanos() / MS_TO_NANO;
 
-        debug_u64(low as u64, b"LOW");
-        debug_u64(high as u64, b"HIGH");
         debug_u64(pulses as u64, b"PULSES");
         debug_u64((end - start) as u64, b"TIMING");
     }
 
     pub fn begin(&mut self) {
         self.soft_reset();
-        pin_out(self.drive_pin, Power::Low);
-        pin_out(self.head_sel_pin, Power::High);
-        wait_exact_ns(MS_TO_NANO);
         self.motor_on(true);
     }
 
-    pub fn seek_track00(&self) -> Option<usize> {
+    pub fn seek_track00(&mut self) -> Option<usize> {
+        self.motor_on(true);
         let mut cycles: usize = 0;
 
         for _ in 0..100 {
