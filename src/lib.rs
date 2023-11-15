@@ -15,19 +15,25 @@ teensycore::main!({
 
     loop {
         driver.motor_on(true);
-        match driver.seek_track00() {
-            Some(cycles) => {
-                print(b"Found track0 in ");
-                print_u32(cycles as u32);
-                print(b" cycles!\n");
 
-                driver.read_track();
-            }
-            None => {
-                driver.motor_on(false);
-                debug_str(b"Did not find tack00\n");
-            }
-        }
+        driver.read_track();
+
+        // match driver.seek_track00() {
+        //     Some(cycles) => {
+        //         print(b"Found track0 in ");
+        //         print_u32(cycles as u32);
+        //         print(b" cycles!\n");
+
+        //         // Must wait a bit after the last pulse
+        //         wait_exact_ns(MS_TO_NANO * 20);
+
+        //         driver.read_track();
+        //     }
+        //     None => {
+        //         driver.motor_on(false);
+        //         debug_str(b"Did not find tack00\n");
+        //     }
+        // }
 
         wait_exact_ns(MS_TO_NANO * 5000);
     }

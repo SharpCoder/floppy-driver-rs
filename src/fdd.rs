@@ -48,7 +48,7 @@ impl FloppyDriver {
             pull_keep: PullKeep::Pull,
             pull_keep_en: false,
             open_drain: false,
-            speed: PinSpeed::Fast150MHz,
+            speed: PinSpeed::Max200MHz,
             drive_strength: DriveStrength::Max,
             fast_slew_rate: true,
         };
@@ -80,11 +80,11 @@ impl FloppyDriver {
         // Create a generic configuration for pullup resistors
         let pullup_config: PadConfig = PadConfig {
             hysterisis: false,
-            resistance: PullUpDown::PullUp22k,
+            resistance: PullUpDown::PullUp47k,
             pull_keep: PullKeep::Pull,
             pull_keep_en: true,
             open_drain: true,
-            speed: PinSpeed::Fast150MHz,
+            speed: PinSpeed::Max200MHz,
             drive_strength: DriveStrength::Max,
             fast_slew_rate: true,
         };
@@ -94,17 +94,17 @@ impl FloppyDriver {
         pin_pad_config(write_protect_pin, pullup_config.clone());
         pin_pad_config(disk_change_pin, pullup_config.clone());
 
-        // Read pin speciality
+        // Read pin specialness
         pin_pad_config(
             read_pin,
             PadConfig {
                 hysterisis: false,
                 resistance: PullUpDown::PullUp100k,
                 pull_keep: PullKeep::Pull,
-                pull_keep_en: false,
+                pull_keep_en: true,
                 open_drain: true,
                 speed: PinSpeed::Fast150MHz,
-                drive_strength: DriveStrength::MaxDiv7,
+                drive_strength: DriveStrength::MaxDiv3,
                 fast_slew_rate: true,
             },
         );
@@ -156,15 +156,19 @@ impl FloppyDriver {
         self.motor_active = on;
 
         if on {
+            pin_out(self.gate_pin, Power::High);
+
             debug_str(b"Power cycling...");
             pin_out(self.drive_pin, Power::High);
-            pin_out(self.head_sel_pin, Power::High);
             pin_out(self.motor_pin, Power::High);
-            pin_out(self.gate_pin, Power::High);
-            wait_exact_ns(MS_TO_NANO * 3000);
-            pin_out(self.drive_pin, Power::Low);
             pin_out(self.head_sel_pin, Power::High);
+            wait_exact_ns(MS_TO_NANO * 3000);
             pin_out(self.motor_pin, Power::Low);
+            wait_exact_ns(MS_TO_NANO * 250);
+            pin_out(self.drive_pin, Power::Low);
+            wait_exact_ns(MS_TO_NANO * 250);
+            pin_out(self.head_sel_pin, Power::High);
+            wait_exact_ns(MS_TO_NANO * 250);
             wait_exact_ns(MS_TO_NANO * 1000);
         } else {
             pin_out(self.motor_pin, Power::High);
@@ -175,8 +179,13 @@ impl FloppyDriver {
             return;
         }
 
+        debug_str(b"Cycle the power...");
+        wait_exact_ns(MS_TO_NANO * 6000);
+
         debug_str(b"Spinning up motor");
         debug_str(b"Waiting for index pulse...");
+
+        // Do a step
 
         let start = nanos();
         while pin_read(self.index_pin) > 0 && (nanos() - start) < 10000 * MS_TO_NANO {
@@ -203,6 +212,17 @@ impl FloppyDriver {
         }
     }
 
+    fn read_data(&self) -> bool {
+        let mut signal = true;
+        for _ in 0..20 {
+            if pin_read(self.read_pin) == 0 {
+                signal = false;
+            }
+        }
+
+        return signal;
+    }
+
     pub fn read_track(&mut self) {
         self.motor_on(true);
 
@@ -216,10 +236,11 @@ impl FloppyDriver {
         let start = nanos() / MS_TO_NANO;
 
         while pin_read(self.index_pin) != 0 {
-            if pin_read(self.read_pin) == 0 {
-                while pin_read(self.read_pin) == 0 {}
-                pulses += 1;
-            }
+            while self.read_data() == true {}
+            while self.read_data() == false {}
+            // while pin_read(self.read_pin) != 0 {}
+
+            pulses += 1;
         }
 
         let end = nanos() / MS_TO_NANO;
