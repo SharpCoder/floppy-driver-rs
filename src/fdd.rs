@@ -156,19 +156,15 @@ impl FloppyDriver {
         self.motor_active = on;
 
         if on {
-            pin_out(self.gate_pin, Power::High);
-
             debug_str(b"Power cycling...");
+            pin_out(self.gate_pin, Power::High);
             pin_out(self.drive_pin, Power::High);
+            pin_out(self.head_sel_pin, Power::High);
             pin_out(self.motor_pin, Power::High);
-            pin_out(self.head_sel_pin, Power::High);
             wait_exact_ns(MS_TO_NANO * 3000);
-            pin_out(self.motor_pin, Power::Low);
-            wait_exact_ns(MS_TO_NANO * 250);
             pin_out(self.drive_pin, Power::Low);
-            wait_exact_ns(MS_TO_NANO * 250);
             pin_out(self.head_sel_pin, Power::High);
-            wait_exact_ns(MS_TO_NANO * 250);
+            pin_out(self.motor_pin, Power::Low);
             wait_exact_ns(MS_TO_NANO * 1000);
         } else {
             pin_out(self.motor_pin, Power::High);
