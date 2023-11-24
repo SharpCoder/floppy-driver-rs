@@ -33,6 +33,8 @@ teensycore::main!({
 
         match driver.seek_track00() {
             Some(_cycles) => {
+                // driver.step(Power::Low, 8);
+
                 // print(b"Found track0 in ");
                 // print_u32(cycles as u32);
                 // print(b" cycles!\n");

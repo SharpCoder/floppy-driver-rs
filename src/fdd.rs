@@ -1,7 +1,6 @@
 #![allow(unused)]
-
 use core::arch::asm;
-use teensycore::{phys::gpio::gpio_read_12, prelude::*};
+use teensycore::prelude::*;
 
 const T2_5: u32 = (F_CPU * 5) / 2 / 1000000;
 const T3_5: u32 = (F_CPU * 7) / 2 / 1000000;
@@ -222,19 +221,14 @@ impl FloppyDriver {
     }
 
     #[no_mangle]
-    fn read_data(&self) -> bool {
-        return gpio_read_12() > 0;
-    }
-
-    #[no_mangle]
     fn read_sym(&self) -> Symbol {
         let mut pulses: u32 = 5;
 
-        while gpio_read_12() == 0 {
+        while pin_read_fast!(self.read_pin) == 0 {
             pulses += 5;
         }
 
-        while gpio_read_12() > 0 {
+        while pin_read_fast!(self.read_pin) > 0 {
             pulses += 5;
         }
 
@@ -258,12 +252,8 @@ impl FloppyDriver {
         let mut sync_error = false;
         let mut sync = 0;
         let mut sync_iterations = 0;
-
-        // Wait for an index pulse
-        while pin_read(self.index_pin) != 0 {}
-        while pin_read(self.index_pin) == 0 {}
-
         let mut pattern_index = 0;
+        let mut start = 0;
         // MLMLMSLMLMSLMLM
         let pattern = [
             Symbol::Pulse100,
@@ -283,43 +273,44 @@ impl FloppyDriver {
             Symbol::Pulse100,
         ];
 
-        let start = nanos() / MS_TO_NANO;
-        while pin_read(self.index_pin) != 0 {
-            if pin_read(self.read_pin) == 0 {
-                let mut sym = self.read_sym();
+        // Wait for an index pulse
+        while pin_read_fast!(self.index_pin) != 0 {}
+        while pin_read_fast!(self.index_pin) == 0 {}
 
-                match sym {
-                    Symbol::Pulse100 => {
-                        pulses_100 += 1;
-                    }
+        while pin_read_fast!(self.index_pin) != 0 {
+            let mut sym = self.read_sym();
 
-                    Symbol::Pulse1000 => {
-                        pulses_1000 += 1;
-                    }
-
-                    Symbol::Pulse10 => {
-                        pulses_10 += 1;
-                    }
+            match sym {
+                Symbol::Pulse100 => {
+                    pulses_100 += 1;
                 }
 
-                if sym.is(&Symbol::Pulse10) && pattern_index == 0 {
-                    sync += 1;
-                } else if sync >= 80 && sym.is(&pattern[pattern_index]) {
-                    if pattern_index < 14 {
-                        pattern_index += 1;
-                    } else {
-                        found_sync = true;
-                        sync_iterations += 1;
-                        sync = 0;
-                        pattern_index = 0;
-                        pulses_10 = 0;
-                        pulses_100 = 0;
-                        pulses_1000 = 0;
-                    }
+                Symbol::Pulse1000 => {
+                    pulses_1000 += 1;
+                }
+
+                Symbol::Pulse10 => {
+                    pulses_10 += 1;
+                }
+            }
+
+            if sym.is(&Symbol::Pulse10) && pattern_index == 0 {
+                sync += 1;
+            } else if sync >= 80 && sym.is(&pattern[pattern_index]) {
+                if pattern_index < 14 {
+                    pattern_index += 1;
                 } else {
+                    found_sync = true;
+                    sync_iterations += 1;
                     sync = 0;
                     pattern_index = 0;
+                    pulses_10 = 0;
+                    pulses_100 = 0;
+                    pulses_1000 = 0;
                 }
+            } else {
+                sync = 0;
+                pattern_index = 0;
             }
         }
 
