@@ -7,6 +7,7 @@ pub mod config;
 pub mod fdd;
 pub mod mfm;
 
+use core::arch::asm;
 use fdd::*;
 use teensycore::prelude::*;
 
@@ -24,13 +25,16 @@ teensycore::main!({
             Some(_cycles) => {
                 // driver.step(Power::Low, 8);
 
-                // print(b"Found track0 in ");
-                // print_u32(cycles as u32);
-                // print(b" cycles!\n");
+                // // print(b"Found track0 in ");
+                // // print_u32(cycles as u32);
+                // // print(b" cycles!\n");
 
-                // Must wait a bit after the last pulse
-                // wait_exact_ns(MS_TO_NANO * 20);
+                // // Must wait a bit after the last pulse
+                wait_exact_ns(MS_TO_NANO * 20);
                 driver.read_track();
+                loop {
+                    assembly!("nop");
+                }
             }
             None => {
                 driver.motor_on(false);

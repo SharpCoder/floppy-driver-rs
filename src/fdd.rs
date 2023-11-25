@@ -173,6 +173,7 @@ impl FloppyDriver {
     #[no_mangle]
     pub fn read_track(&mut self) {
         let mut sectors = 0;
+        let mut buf: [u8; 512] = [0; 512];
 
         while fdd_read_index() == 0 {
             assembly!("nop");
@@ -189,8 +190,16 @@ impl FloppyDriver {
         let start = nanos() / MS_TO_NANO;
 
         while fdd_read_index() > 0 {
-            mfm_sync();
-            sectors += 1;
+            if mfm_sync() {
+                mfm_read_bytes(&mut buf);
+                debug_str(b"===========");
+                debug_hex(buf[0] as u32, b"buf[0]");
+                debug_hex(buf[1] as u32, b"buf[1]");
+                debug_hex(buf[2] as u32, b"buf[2]");
+                debug_hex(buf[3] as u32, b"buf[3]");
+
+                sectors += 1;
+            }
         }
 
         let end = nanos() / MS_TO_NANO;
