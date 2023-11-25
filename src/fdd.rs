@@ -1,59 +1,21 @@
 #![allow(unused)]
+use crate::config::*;
+use crate::mfm::*;
 use core::arch::asm;
 use teensycore::prelude::*;
 
-const T2_5: u32 = (F_CPU * 5) / 2 / 1000000;
-const T3_5: u32 = (F_CPU * 7) / 2 / 1000000;
-
-#[derive(Copy, Clone)]
-enum Symbol {
-    Pulse10 = 0,
-    Pulse100 = 1,
-    Pulse1000 = 2,
-}
-
-impl Symbol {
-    pub fn is(&self, other: &Symbol) -> bool {
-        return *self as usize == *other as usize;
-    }
-}
-
-#[derive(Clone, Copy)]
-pub struct FloppyConfiguration {
-    pub index_pin: usize,
-    pub drive_pin: usize,
-    pub motor_pin: usize,
-    pub dir_pin: usize,
-    pub step_pin: usize,
-    pub write_pin: usize,
-    pub gate_pin: usize,
-    pub track00_pin: usize,
-    pub write_protect_pin: usize,
-    pub read_pin: usize,
-    pub head_sel_pin: usize,
-    pub disk_change_pin: usize,
+pub fn fdd_read_index() -> u32 {
+    return read_word(addrs::GPIO9) & (0x1 << 5);
 }
 
 #[derive(Clone, Copy)]
 pub struct FloppyDriver {
     debug: bool,
     motor_active: bool,
-    index_pin: usize,
-    drive_pin: usize,
-    motor_pin: usize,
-    dir_pin: usize,
-    step_pin: usize,
-    write_pin: usize,
-    gate_pin: usize,
-    track00_pin: usize,
-    write_protect_pin: usize,
-    read_pin: usize,
-    head_sel_pin: usize,
-    disk_change_pin: usize,
 }
 
 impl FloppyDriver {
-    pub fn new(config: FloppyConfiguration) -> Self {
+    pub fn new() -> Self {
         // Create a generic configuration for normal pins
         let generic_config: PadConfig = PadConfig {
             hysterisis: false,
@@ -66,29 +28,29 @@ impl FloppyDriver {
             fast_slew_rate: true,
         };
 
-        pin_pad_config(config.drive_pin, generic_config.clone());
-        pin_pad_config(config.motor_pin, generic_config.clone());
-        pin_pad_config(config.dir_pin, generic_config.clone());
-        pin_pad_config(config.step_pin, generic_config.clone());
-        pin_pad_config(config.write_pin, generic_config.clone());
-        pin_pad_config(config.gate_pin, generic_config.clone());
-        pin_pad_config(config.head_sel_pin, generic_config.clone());
+        pin_pad_config(DRIVE_PIN, generic_config.clone());
+        pin_pad_config(MOTOR_PIN, generic_config.clone());
+        pin_pad_config(DIR_PIN, generic_config.clone());
+        pin_pad_config(STEP_PIN, generic_config.clone());
+        pin_pad_config(WRITE_PIN, generic_config.clone());
+        pin_pad_config(GATE_PIN, generic_config.clone());
+        pin_pad_config(HEAD_SEL_PIN, generic_config.clone());
 
-        pin_mode(config.drive_pin, Mode::Output);
-        pin_mode(config.motor_pin, Mode::Output);
-        pin_mode(config.dir_pin, Mode::Output);
-        pin_mode(config.step_pin, Mode::Output);
-        pin_mode(config.head_sel_pin, Mode::Output);
-        pin_mode(config.write_pin, Mode::Output);
-        pin_mode(config.gate_pin, Mode::Output);
+        pin_mode(DRIVE_PIN, Mode::Output);
+        pin_mode(MOTOR_PIN, Mode::Output);
+        pin_mode(DIR_PIN, Mode::Output);
+        pin_mode(STEP_PIN, Mode::Output);
+        pin_mode(HEAD_SEL_PIN, Mode::Output);
+        pin_mode(WRITE_PIN, Mode::Output);
+        pin_mode(GATE_PIN, Mode::Output);
 
-        pin_out(config.drive_pin, Power::High);
-        pin_out(config.motor_pin, Power::High);
-        pin_out(config.dir_pin, Power::High);
-        pin_out(config.step_pin, Power::High);
-        pin_out(config.head_sel_pin, Power::High);
-        pin_out(config.write_pin, Power::High);
-        pin_out(config.gate_pin, Power::High);
+        pin_out(DRIVE_PIN, Power::High);
+        pin_out(MOTOR_PIN, Power::High);
+        pin_out(DIR_PIN, Power::High);
+        pin_out(STEP_PIN, Power::High);
+        pin_out(HEAD_SEL_PIN, Power::High);
+        pin_out(WRITE_PIN, Power::High);
+        pin_out(GATE_PIN, Power::High);
 
         // Create a generic configuration for pullup resistors
         let pullup_config: PadConfig = PadConfig {
@@ -102,14 +64,14 @@ impl FloppyDriver {
             fast_slew_rate: true,
         };
 
-        pin_pad_config(config.index_pin, pullup_config.clone());
-        pin_pad_config(config.track00_pin, pullup_config.clone());
-        pin_pad_config(config.write_protect_pin, pullup_config.clone());
-        pin_pad_config(config.disk_change_pin, pullup_config.clone());
+        pin_pad_config(INDEX_PIN, pullup_config.clone());
+        pin_pad_config(TRACK00_PIN, pullup_config.clone());
+        pin_pad_config(WRITE_PROTECT_PIN, pullup_config.clone());
+        pin_pad_config(DISK_CHANGE_PIN, pullup_config.clone());
 
         // Read pin specifically
         pin_pad_config(
-            config.read_pin,
+            READ_PIN,
             PadConfig {
                 hysterisis: false,
                 resistance: PullUpDown::PullUp47k,
@@ -123,38 +85,26 @@ impl FloppyDriver {
         );
 
         // Set them to outputs
-        pin_mode(config.index_pin, Mode::Input);
-        pin_mode(config.track00_pin, Mode::Input);
-        pin_mode(config.write_protect_pin, Mode::Input);
-        pin_mode(config.read_pin, Mode::Input);
-        pin_mode(config.disk_change_pin, Mode::Input);
+        pin_mode(INDEX_PIN, Mode::Input);
+        pin_mode(TRACK00_PIN, Mode::Input);
+        pin_mode(WRITE_PROTECT_PIN, Mode::Input);
+        pin_mode(READ_PIN, Mode::Input);
+        pin_mode(DISK_CHANGE_PIN, Mode::Input);
 
         return FloppyDriver {
             debug: true,
             motor_active: false,
-            index_pin: config.index_pin,
-            drive_pin: config.drive_pin,
-            motor_pin: config.motor_pin,
-            dir_pin: config.dir_pin,
-            step_pin: config.step_pin,
-            write_pin: config.write_pin,
-            gate_pin: config.gate_pin,
-            track00_pin: config.track00_pin,
-            write_protect_pin: config.write_protect_pin,
-            read_pin: config.read_pin,
-            head_sel_pin: config.head_sel_pin,
-            disk_change_pin: config.disk_change_pin,
         };
     }
 
     fn soft_reset(&mut self) {
-        pin_out(self.drive_pin, Power::High);
-        pin_out(self.motor_pin, Power::High);
-        pin_out(self.dir_pin, Power::High);
-        pin_out(self.step_pin, Power::High);
-        pin_out(self.write_pin, Power::High);
-        pin_out(self.gate_pin, Power::High);
-        pin_out(self.head_sel_pin, Power::High);
+        pin_out(DRIVE_PIN, Power::High);
+        pin_out(MOTOR_PIN, Power::High);
+        pin_out(DIR_PIN, Power::High);
+        pin_out(STEP_PIN, Power::High);
+        pin_out(WRITE_PIN, Power::High);
+        pin_out(GATE_PIN, Power::High);
+        pin_out(HEAD_SEL_PIN, Power::High);
 
         self.motor_active = false;
         wait_exact_ns(MS_TO_NANO * 500);
@@ -169,17 +119,17 @@ impl FloppyDriver {
 
         if on {
             debug_str(b"Power cycling...");
-            pin_out(self.gate_pin, Power::High);
-            pin_out(self.drive_pin, Power::High);
-            pin_out(self.head_sel_pin, Power::High);
-            pin_out(self.motor_pin, Power::High);
+            pin_out(GATE_PIN, Power::High);
+            pin_out(DRIVE_PIN, Power::High);
+            pin_out(HEAD_SEL_PIN, Power::High);
+            pin_out(MOTOR_PIN, Power::High);
             wait_exact_ns(MS_TO_NANO * 3000);
-            pin_out(self.drive_pin, Power::Low);
-            pin_out(self.head_sel_pin, Power::High);
-            pin_out(self.motor_pin, Power::Low);
+            pin_out(DRIVE_PIN, Power::Low);
+            pin_out(HEAD_SEL_PIN, Power::High);
+            pin_out(MOTOR_PIN, Power::Low);
             wait_exact_ns(MS_TO_NANO * 1000);
         } else {
-            pin_out(self.motor_pin, Power::High);
+            pin_out(MOTOR_PIN, Power::High);
         }
 
         if !on {
@@ -196,11 +146,11 @@ impl FloppyDriver {
         // Do a step
 
         let start = nanos();
-        while pin_read(self.index_pin) > 0 && (nanos() - start) < 10000 * MS_TO_NANO {
+        while pin_read_fast!(INDEX_PIN) > 0 && (nanos() - start) < 10000 * MS_TO_NANO {
             assembly!("nop");
         }
 
-        if pin_read(self.index_pin) == 0 {
+        if pin_read_fast!(INDEX_PIN) == 0 {
             debug_str(b"Received index pulse!");
             wait_exact_ns(MS_TO_NANO * 5000);
         } else {
@@ -210,137 +160,43 @@ impl FloppyDriver {
     }
 
     pub fn step(&self, dir: Power, times: u8) {
-        pin_out(self.dir_pin, dir);
+        pin_out(DIR_PIN, dir);
         for _ in 0..times {
-            pin_out(self.step_pin, Power::High);
+            pin_out(STEP_PIN, Power::High);
             wait_exact_ns(MS_TO_NANO * 11);
-            pin_out(self.step_pin, Power::Low);
+            pin_out(STEP_PIN, Power::Low);
             wait_exact_ns(MS_TO_NANO * 11);
-            pin_out(self.step_pin, Power::High);
-        }
-    }
-
-    #[no_mangle]
-    fn read_sym(&self) -> Symbol {
-        let mut pulses: u32 = 5;
-
-        while pin_read_fast!(self.read_pin) == 0 {
-            pulses += 5;
-        }
-
-        while pin_read_fast!(self.read_pin) > 0 {
-            pulses += 5;
-        }
-
-        if pulses < T2_5 {
-            return Symbol::Pulse10;
-        } else if pulses > T3_5 {
-            return Symbol::Pulse1000;
-        } else {
-            return Symbol::Pulse100;
+            pin_out(STEP_PIN, Power::High);
         }
     }
 
     #[no_mangle]
     pub fn read_track(&mut self) {
-        // self.motor_on(true);
+        let mut sectors = 0;
 
-        let mut pulses_10 = 0;
-        let mut pulses_100 = 0;
-        let mut pulses_1000 = 0;
-        let mut found_sync = false;
-        let mut sync_error = false;
-        let mut sync = 0;
-        let mut sync_iterations = 0;
-        let mut pattern_index = 0;
-        let mut start = 0;
-        // MLMLMSLMLMSLMLM
-        let pattern = [
-            Symbol::Pulse100,
-            Symbol::Pulse1000,
-            Symbol::Pulse100,
-            Symbol::Pulse1000,
-            Symbol::Pulse100,
-            Symbol::Pulse10,
-            Symbol::Pulse1000,
-            Symbol::Pulse100,
-            Symbol::Pulse1000,
-            Symbol::Pulse100,
-            Symbol::Pulse10,
-            Symbol::Pulse1000,
-            Symbol::Pulse100,
-            Symbol::Pulse1000,
-            Symbol::Pulse100,
-        ];
+        while fdd_read_index() == 0 {
+            assembly!("nop");
+        }
 
-        // Wait for an index pulse
-        while pin_read_fast!(self.index_pin) != 0 {}
-        while pin_read_fast!(self.index_pin) == 0 {}
+        while fdd_read_index() > 0 {
+            assembly!("nop");
+        }
 
-        while pin_read_fast!(self.index_pin) != 0 {
-            let mut sym = self.read_sym();
+        while fdd_read_index() == 0 {
+            assembly!("nop");
+        }
 
-            match sym {
-                Symbol::Pulse100 => {
-                    pulses_100 += 1;
-                }
+        let start = nanos() / MS_TO_NANO;
 
-                Symbol::Pulse1000 => {
-                    pulses_1000 += 1;
-                }
-
-                Symbol::Pulse10 => {
-                    pulses_10 += 1;
-                }
-            }
-
-            if sym.is(&Symbol::Pulse10) && pattern_index == 0 {
-                sync += 1;
-            } else if sync >= 80 && sym.is(&pattern[pattern_index]) {
-                if pattern_index < 14 {
-                    pattern_index += 1;
-                } else {
-                    found_sync = true;
-                    sync_iterations += 1;
-                    sync = 0;
-                    pattern_index = 0;
-                    pulses_10 = 0;
-                    pulses_100 = 0;
-                    pulses_1000 = 0;
-                }
-            } else {
-                sync = 0;
-                pattern_index = 0;
-            }
+        while fdd_read_index() > 0 {
+            mfm_sync();
+            sectors += 1;
         }
 
         let end = nanos() / MS_TO_NANO;
 
-        // debug_u64(pulses_10 + pulses_100 + pulses_1000, b"PULSES");
-
-        debug_u64(pulses_10 as u64, b"PULSES_10");
-        debug_u64(pulses_100 as u64, b"PULSES_100");
-        debug_u64(pulses_1000 as u64, b"PULSES_1000");
-        debug_u64(
-            pulses_10 + pulses_100 + pulses_1000 as u64,
-            b"Total Flux Transitions in one sector",
-        );
-
-        match found_sync {
-            true => {
-                debug_str(b"Found sync pattern");
-            }
-            false => {
-                debug_str(b"Did not find sync pattern");
-            }
-        }
-
-        debug_u64(sync_iterations, b"Sectors found");
-
-        // debug_u64(pulses_100 as u64, b"PULSES_100");
-        // debug_u64(pulses_1000 as u64, b"PULSES_1000");
-        // debug_u64((pulses_1000 + pulses_100) as u64, b"Total Pulses");
-        // debug_u64((end - start) as u64, b"TIMING\n");
+        debug_u64(sectors as u64, b"Sectors found");
+        debug_u64((end - start) as u64, b"TIMING");
     }
 
     pub fn begin(&mut self) {
@@ -353,7 +209,7 @@ impl FloppyDriver {
         let mut cycles: usize = 0;
 
         for _ in 0..100 {
-            if pin_read(self.track00_pin) == 0 {
+            if pin_read_fast!(TRACK00_PIN) == 0 {
                 return Some(cycles);
             }
 
@@ -362,7 +218,7 @@ impl FloppyDriver {
         }
 
         for _ in 0..20 {
-            if pin_read(self.track00_pin) == 0 {
+            if pin_read_fast!(TRACK00_PIN) == 0 {
                 return Some(cycles);
             }
 

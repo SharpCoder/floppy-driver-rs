@@ -3,27 +3,16 @@
 #![crate_type = "staticlib"]
 #![no_std]
 
-use teensycore::prelude::*;
+pub mod config;
+pub mod fdd;
+pub mod mfm;
 
-mod fdd;
 use fdd::*;
+use teensycore::prelude::*;
 
 teensycore::main!({
     // Create the floppy driver
-    let mut driver = FloppyDriver::new(FloppyConfiguration {
-        index_pin: 3,
-        drive_pin: 4,
-        motor_pin: 5,
-        dir_pin: 6,
-        step_pin: 7,
-        write_pin: 8,
-        gate_pin: 9,
-        track00_pin: 10,
-        write_protect_pin: 11,
-        read_pin: 12,
-        head_sel_pin: 14,
-        disk_change_pin: 15,
-    });
+    let mut driver = FloppyDriver::new();
     driver.begin();
 
     loop {
