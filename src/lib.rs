@@ -13,31 +13,26 @@ use teensycore::prelude::*;
 
 teensycore::main!({
     // Create the floppy driver
-    let mut driver = FloppyDriver::new();
-    driver.begin();
+    fdd_init();
 
     loop {
-        driver.motor_on(true);
+        fdd_set_motor(true);
 
-        // driver.read_track();
-
-        match driver.seek_track00() {
-            Some(_cycles) => {
-                // driver.step(Power::Low, 8);
-
-                // // print(b"Found track0 in ");
-                // // print_u32(cycles as u32);
-                // // print(b" cycles!\n");
+        match fdd_seek_track00() {
+            Some(cycles) => {
+                print(b"Found track0 in ");
+                print_u32(cycles as u32);
+                print(b" cycles!\n");
 
                 // // Must wait a bit after the last pulse
                 wait_exact_ns(MS_TO_NANO * 20);
-                driver.read_track();
+                // driver.read_track();
                 loop {
                     assembly!("nop");
                 }
             }
             None => {
-                driver.motor_on(false);
+                fdd_set_motor(false);
                 debug_str(b"Did not find tack00\n");
             }
         }
