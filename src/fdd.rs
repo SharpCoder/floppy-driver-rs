@@ -4,6 +4,36 @@ use crate::mfm::*;
 use core::arch::asm;
 use teensycore::prelude::*;
 
+static mut FLOPPY_SIDE: u8 = 0;
+static mut FLOPPY_TRACK: u8 = 0;
+
+#[repr(C)]
+pub struct SectorID {
+    pub id: u8,
+    pub cylinder: u8,
+    pub head: u8,
+    pub sector: u8,
+    pub size: u8,
+    pub crc1: u16,
+    pub data: [u8; 512],
+    pub crc2: u16,
+}
+
+impl SectorID {
+    pub fn new() -> Self {
+        return SectorID {
+            id: 0,
+            cylinder: 0,
+            head: 0,
+            sector: 0,
+            size: 0,
+            crc1: 0,
+            data: [0; 512],
+            crc2: 0,
+        };
+    }
+}
+
 /**
  * This is a total hack. It reads directly from the gpio register for pin 3.
  * Bypassing the pin_read method of teensycore because it's too slow.
@@ -93,11 +123,9 @@ pub fn fdd_set_motor(on: bool) {
     if on {
         pin_out(GATE_PIN, Power::High);
         pin_out(DRIVE_PIN, Power::High);
-        pin_out(HEAD_SEL_PIN, Power::High);
         pin_out(MOTOR_PIN, Power::High);
         wait_exact_ns(MS_TO_NANO * 3000);
         pin_out(DRIVE_PIN, Power::Low);
-        pin_out(HEAD_SEL_PIN, Power::High);
         pin_out(MOTOR_PIN, Power::Low);
         wait_exact_ns(MS_TO_NANO * 1000);
     } else {
@@ -124,7 +152,6 @@ pub fn fdd_set_motor(on: bool) {
 
     if fdd_read_index() == 0 {
         debug_str(b"Received index pulse!");
-        wait_exact_ns(MS_TO_NANO * 5000);
     } else {
         debug_str(b"Did not receive index pulse");
         pin_out(MOTOR_PIN, Power::High);
@@ -134,7 +161,7 @@ pub fn fdd_set_motor(on: bool) {
 /**
  * Change the active track.
  */
-pub fn fdd_step_track(dir: Power, times: usize) {
+fn fdd_step_track(dir: Power, times: u8) {
     pin_out(DIR_PIN, dir);
     for _ in 0..times {
         pin_out(STEP_PIN, Power::High);
@@ -154,6 +181,10 @@ pub fn fdd_seek_track00() -> Option<usize> {
 
     for _ in 0..100 {
         if pin_read(TRACK00_PIN) == 0 {
+            unsafe {
+                FLOPPY_TRACK = 0;
+            }
+            wait_exact_ns(MS_TO_NANO * 20);
             return Some(cycles);
         }
 
@@ -163,11 +194,86 @@ pub fn fdd_seek_track00() -> Option<usize> {
 
     for _ in 0..20 {
         if pin_read(TRACK00_PIN) == 0 {
+            unsafe {
+                FLOPPY_TRACK = 0;
+            }
+            wait_exact_ns(MS_TO_NANO * 20);
             return Some(cycles);
         }
 
         cycles += 1;
         fdd_step_track(Power::Low, 1);
+    }
+
+    return None;
+}
+
+/**
+ * Navigate to a specific track
+ */
+fn fdd_set_track(track: u8) {
+    let cur = unsafe { FLOPPY_TRACK };
+    if cur == track {
+        return;
+    } else if cur > track {
+        // Step right
+        fdd_step_track(Power::High, cur - track);
+    } else {
+        // Step left
+        fdd_step_track(Power::Low, track - cur);
+    }
+
+    unsafe {
+        FLOPPY_TRACK = track;
+    }
+}
+
+fn fdd_set_side(side: u8) {
+    if side == 0 {
+        pin_out(HEAD_SEL_PIN, Power::High);
+    } else {
+        pin_out(HEAD_SEL_PIN, Power::Low);
+    }
+}
+
+/**
+ * Read an entire sector
+ */
+pub fn fdd_read_sector(head: u8, cylinder: u8, sector: u8) -> Option<SectorID> {
+    fdd_set_track(cylinder);
+    fdd_set_side(head);
+
+    let mut error = 0usize;
+    let mut buf: [u8; 560] = [0; 560];
+    let mut ret = SectorID::new();
+    let offset = 45;
+    while error < 36 {
+        if (mfm_sync()) {
+            mfm_read_bytes(&mut buf);
+            // Verify sector
+            if buf[0] == 0xFE && buf[1] == cylinder && buf[2] == head && buf[3] == sector {
+                ret.id = buf[0];
+                ret.cylinder = buf[1];
+                ret.head = buf[2];
+                ret.sector = buf[3];
+                ret.size = buf[4];
+
+                // Copy the data
+                for i in 0..512 {
+                    ret.data[i] = buf[i + offset];
+                }
+
+                // TODO:  crc stuff
+                return Some(ret);
+            }
+        }
+
+        if fdd_read_index() == 0 {
+            while fdd_read_index() == 0 {
+                assembly!("nop");
+            }
+            error += 1;
+        }
     }
 
     return None;

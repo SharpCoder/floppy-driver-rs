@@ -3,9 +3,9 @@
 #![crate_type = "staticlib"]
 #![no_std]
 
-pub mod config;
-pub mod fdd;
-pub mod mfm;
+mod config;
+mod fdd;
+mod mfm;
 
 use core::arch::asm;
 use fdd::*;
@@ -24,9 +24,24 @@ teensycore::main!({
                 print_u32(cycles as u32);
                 print(b" cycles!\n");
 
-                // // Must wait a bit after the last pulse
-                wait_exact_ns(MS_TO_NANO * 20);
-                // driver.read_track();
+                // Read a sector
+                match fdd_read_sector(1, 2, 2) {
+                    None => {
+                        debug_str(b"Failed to find sector");
+                    }
+                    Some(sector) => {
+                        debug_str(b"Found the sector!!");
+
+                        // Dump the first 50 bytes
+                        for i in 0..50 {
+                            debug_hex(sector.data[i] as u32, b"");
+                            wait_exact_ns(MS_TO_NANO);
+                        }
+                    }
+                }
+
+                fdd_shutdown();
+
                 loop {
                     assembly!("nop");
                 }

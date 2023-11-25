@@ -1,5 +1,4 @@
 use crate::fdd::fdd_read_index;
-use core::arch::asm;
 use teensycore::clock::F_CPU;
 use teensycore::prelude::*;
 
@@ -101,13 +100,12 @@ fn mfm_read_sym() -> Symbol {
  */
 pub fn mfm_sync() -> bool {
     let mut short = 0;
-    let mut index = 0;
 
     while fdd_read_index() != 0 {
         let sym = mfm_read_sym();
         if sym.is(&Symbol::Pulse10) {
             short += 1;
-        } else if short > 90 && sym.is(&SYNC_PATTERN[0]) {
+        } else if short > 80 && sym.is(&SYNC_PATTERN[0]) {
             let mut found = true;
             for i in 1..SYNC_PATTERN.len() {
                 if !mfm_read_sym().is(&SYNC_PATTERN[i]) {
@@ -179,8 +177,8 @@ pub fn mfm_read_bytes(arr: &mut [u8]) -> bool {
         // When we've exhausted the length of a byte,
         // we can write it and adjust values for the
         // follow up.
+        arr[n] = (byte >> 8) as u8;
         if weight <= 0x80 {
-            arr[n] = (byte >> 8) as u8;
             byte <<= 8;
             weight <<= 8;
             n += 1;
