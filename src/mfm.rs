@@ -75,15 +75,16 @@ static SYNC_PATTERN: [Symbol; 15] = [
 /**
  * Read a flux transition and time it to one of the 3 known pulse types.
  */
+#[no_mangle]
 fn mfm_read_sym() -> Symbol {
-    let mut pulses: u32 = 5;
+    let mut pulses: u32 = 6;
 
     while read_data() == 0 {
-        pulses += 5;
+        pulses += 6;
     }
 
     while read_data() > 0 {
-        pulses += 5;
+        pulses += 6;
     }
 
     if pulses < T2_5 {

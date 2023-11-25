@@ -25,7 +25,7 @@ teensycore::main!({
                 print(b" cycles!\n");
 
                 // Read a sector
-                match fdd_read_sector(1, 2, 2) {
+                match fdd_read_sector(1, 18, 2) {
                     None => {
                         debug_str(b"Failed to find sector");
                     }
