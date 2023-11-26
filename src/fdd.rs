@@ -1,4 +1,5 @@
 #![allow(unused)]
+
 use crate::config::*;
 use crate::mfm::*;
 use core::arch::asm;
@@ -98,7 +99,7 @@ pub fn fdd_init() {
     pin_pad_config(INDEX_PIN, pullup_config.clone());
     pin_pad_config(TRACK00_PIN, pullup_config.clone());
     pin_pad_config(WRITE_PROTECT_PIN, pullup_config.clone());
-    pin_pad_config(DISK_CHANGE_PIN, pullup_config.clone());
+    pin_pad_config(READY_PIN, pullup_config.clone());
     pin_pad_config(READ_PIN, pullup_config.clone());
 
     // Set them to outputs
@@ -106,7 +107,7 @@ pub fn fdd_init() {
     pin_mode(TRACK00_PIN, Mode::Input);
     pin_mode(WRITE_PROTECT_PIN, Mode::Input);
     pin_mode(READ_PIN, Mode::Input);
-    pin_mode(DISK_CHANGE_PIN, Mode::Input);
+    pin_mode(READY_PIN, Mode::Input);
 }
 
 /**
@@ -163,6 +164,8 @@ pub fn fdd_set_motor(on: bool) {
  */
 fn fdd_step_track(dir: Power, times: u8) {
     pin_out(DIR_PIN, dir);
+    wait_exact_ns(1 * MS_TO_NANO);
+
     for _ in 0..times {
         pin_out(STEP_PIN, Power::High);
         wait_exact_ns(MS_TO_NANO * 11);
@@ -277,6 +280,36 @@ pub fn fdd_read_sector(head: u8, cylinder: u8, sector: u8) -> Option<SectorID> {
     }
 
     return None;
+}
+
+pub fn fdd_write_sector(head: u8, cylinder: u8, sector: u8, data: &[u8]) {
+    // The algorithm will work like so:
+    // First, seek the sector we want and then read the first 60 bytes
+    // which are the metadata. Compare with target. If approved then
+    // write based on timing.
+    fdd_set_track(cylinder);
+    fdd_set_side(head);
+    let mut error = 0usize;
+    let mut buf: [u8; 60] = [0; 60];
+
+    while error < 36 {
+        if (mfm_sync()) {
+            mfm_read_bytes(&mut buf);
+            // Verify sector
+            if buf[0] == 0xFE && buf[1] == cylinder && buf[2] == head && buf[3] == sector {
+                // Write the data
+                mfm_write_bytes(&data);
+                return;
+            }
+        }
+
+        if fdd_read_index() == 0 {
+            while fdd_read_index() == 0 {
+                assembly!("nop");
+            }
+            error += 1;
+        }
+    }
 }
 
 /**

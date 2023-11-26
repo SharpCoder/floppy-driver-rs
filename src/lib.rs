@@ -11,6 +11,10 @@ use core::arch::asm;
 use fdd::*;
 use teensycore::prelude::*;
 
+#[cfg(feature = "testing")]
+extern crate std;
+
+#[cfg(not(feature = "testing"))]
 teensycore::main!({
     // Create the floppy driver
     fdd_init();
@@ -24,8 +28,11 @@ teensycore::main!({
                 print_u32(cycles as u32);
                 print(b" cycles!\n");
 
+                // Write a sector
+                // fdd_write_sector(0, 18, 2, &[1, 2, 3, 1, 2, 3, 1, 2, 3, 4]);
+
                 // Read a sector
-                match fdd_read_sector(1, 18, 2) {
+                match fdd_read_sector(0, 4, 3) {
                     None => {
                         debug_str(b"Failed to find sector");
                     }
@@ -33,7 +40,7 @@ teensycore::main!({
                         debug_str(b"Found the sector!!");
 
                         // Dump the first 50 bytes
-                        for i in 0..50 {
+                        for i in 0..10 {
                             debug_hex(sector.data[i] as u32, b"");
                             wait_exact_ns(MS_TO_NANO);
                         }

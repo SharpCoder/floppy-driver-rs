@@ -9,15 +9,14 @@ pub static TRACK00_PIN: usize = 10;
 pub static WRITE_PROTECT_PIN: usize = 11;
 pub static READ_PIN: usize = 12; // This pin assigmnet is recreational. DO NOT CHANGE. It won't work.
 pub static HEAD_SEL_PIN: usize = 14;
-pub static DISK_CHANGE_PIN: usize = 15;
+pub static READY_PIN: usize = 15;
 
-/**
- * Informationally, 3.5" floppy disks have the following features:
- * 
- * 80 cylinders
- * 18 sectors (per cylinder)
- * 2 sides (aka head)
- * 512 bytes (per sector)
- * 8 bits (per byte)
- * 
- */
+/*
+ Informationally, 3.5" floppy disks have the following features:
+
+ 80 cylinders
+ 18 sectors (per cylinder)
+ 2 sides (aka head)
+ 512 bytes (per sector)
+ 8 bits (per byte)
+*/
