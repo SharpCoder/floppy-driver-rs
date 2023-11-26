@@ -44,6 +44,20 @@ pub fn fdd_read_index() -> u32 {
 }
 
 /**
+ * True if the media is write protected
+ */
+pub fn fdd_read_write_protect() -> bool {
+    return pin_read(WRITE_PROTECT_PIN) > 0;
+}
+
+/**
+ * True if the track0 pin is pulled high
+ */
+pub fn fdd_read_track00() -> bool {
+    return pin_read(TRACK00_PIN) > 0;
+}
+
+/**
  * Initialize the floppy driver. Configuring pull-ups and
  * setting a default value.
  */
@@ -56,7 +70,7 @@ pub fn fdd_init() {
         pull_keep_en: false,
         open_drain: false,
         speed: PinSpeed::Max200MHz,
-        drive_strength: DriveStrength::Max,
+        drive_strength: DriveStrength::MaxDiv3,
         fast_slew_rate: true,
     };
 
@@ -68,6 +82,14 @@ pub fn fdd_init() {
     pin_pad_config(GATE_PIN, generic_config.clone());
     pin_pad_config(HEAD_SEL_PIN, generic_config.clone());
 
+    pin_out(DRIVE_PIN, Power::High);
+    pin_out(MOTOR_PIN, Power::High);
+    pin_out(DIR_PIN, Power::Low);
+    pin_out(STEP_PIN, Power::High);
+    pin_out(HEAD_SEL_PIN, Power::High);
+    pin_out(WRITE_PIN, Power::High);
+    pin_out(GATE_PIN, Power::High);
+
     pin_mode(DRIVE_PIN, Mode::Output);
     pin_mode(MOTOR_PIN, Mode::Output);
     pin_mode(DIR_PIN, Mode::Output);
@@ -76,18 +98,10 @@ pub fn fdd_init() {
     pin_mode(WRITE_PIN, Mode::Output);
     pin_mode(GATE_PIN, Mode::Output);
 
-    pin_out(DRIVE_PIN, Power::High);
-    pin_out(MOTOR_PIN, Power::High);
-    pin_out(DIR_PIN, Power::High);
-    pin_out(STEP_PIN, Power::High);
-    pin_out(HEAD_SEL_PIN, Power::High);
-    pin_out(WRITE_PIN, Power::High);
-    pin_out(GATE_PIN, Power::High);
-
     // Create a generic configuration for pullup resistors
     let pullup_config: PadConfig = PadConfig {
         hysterisis: false,
-        resistance: PullUpDown::PullUp22k,
+        resistance: PullUpDown::PullUp47k,
         pull_keep: PullKeep::Pull,
         pull_keep_en: true,
         open_drain: true,
@@ -122,10 +136,14 @@ pub fn fdd_set_motor(on: bool) {
     }
 
     if on {
+        // Disable writing
         pin_out(GATE_PIN, Power::High);
+        pin_out(WRITE_PIN, Power::Low);
+        // And disable everything else, too
         pin_out(DRIVE_PIN, Power::High);
         pin_out(MOTOR_PIN, Power::High);
         wait_exact_ns(MS_TO_NANO * 3000);
+        pin_out(DIR_PIN, Power::High);
         pin_out(DRIVE_PIN, Power::Low);
         pin_out(MOTOR_PIN, Power::Low);
         wait_exact_ns(MS_TO_NANO * 1000);
@@ -162,28 +180,33 @@ pub fn fdd_set_motor(on: bool) {
 /**
  * Change the active track.
  */
-fn fdd_step_track(dir: Power, times: u8) {
-    pin_out(DIR_PIN, dir);
-    wait_exact_ns(1 * MS_TO_NANO);
-
+pub fn fdd_step(times: u8) {
     for _ in 0..times {
-        pin_out(STEP_PIN, Power::High);
-        wait_exact_ns(MS_TO_NANO * 11);
         pin_out(STEP_PIN, Power::Low);
-        wait_exact_ns(MS_TO_NANO * 11);
+        wait_exact_ns(MICRO_TO_NANO / 5);
         pin_out(STEP_PIN, Power::High);
+        wait_exact_ns(MS_TO_NANO * 3);
     }
+}
+
+pub fn fdd_step_dir(dir: Power) {
+    pin_out(DIR_PIN, Power::Low);
+    wait_exact_ns(18 * MS_TO_NANO);
+    pin_out(DIR_PIN, Power::High);
+    wait_exact_ns(18 * MS_TO_NANO);
+    pin_out(DIR_PIN, dir);
+    wait_exact_ns(18 * MS_TO_NANO);
 }
 
 /**
  * Seek to track 0.
  */
 pub fn fdd_seek_track00() -> Option<usize> {
-    fdd_set_motor(true);
     let mut cycles: usize = 0;
 
+    fdd_step_dir(Power::High);
     for _ in 0..100 {
-        if pin_read(TRACK00_PIN) == 0 {
+        if !fdd_read_track00() {
             unsafe {
                 FLOPPY_TRACK = 0;
             }
@@ -192,11 +215,13 @@ pub fn fdd_seek_track00() -> Option<usize> {
         }
 
         cycles += 1;
-        fdd_step_track(Power::High, 1);
+        fdd_step(1);
+        debug_str(b"Stepping 1");
     }
 
+    fdd_step_dir(Power::Low);
     for _ in 0..20 {
-        if pin_read(TRACK00_PIN) == 0 {
+        if !fdd_read_track00() {
             unsafe {
                 FLOPPY_TRACK = 0;
             }
@@ -205,7 +230,7 @@ pub fn fdd_seek_track00() -> Option<usize> {
         }
 
         cycles += 1;
-        fdd_step_track(Power::Low, 1);
+        fdd_step(1);
     }
 
     return None;
@@ -220,10 +245,12 @@ fn fdd_set_track(track: u8) {
         return;
     } else if cur > track {
         // Step right
-        fdd_step_track(Power::High, cur - track);
+        fdd_step_dir(Power::High);
+        fdd_step(cur - track);
     } else {
         // Step left
-        fdd_step_track(Power::Low, track - cur);
+        fdd_step_dir(Power::Low);
+        fdd_step(track - cur);
     }
 
     unsafe {

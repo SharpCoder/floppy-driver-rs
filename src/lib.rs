@@ -19,8 +19,14 @@ teensycore::main!({
     // Create the floppy driver
     fdd_init();
 
+    match fdd_read_write_protect() {
+        true => debug_str(b"Media is write protected"),
+        false => debug_str(b"Media is not write protected"),
+    }
+
     loop {
         fdd_set_motor(true);
+        wait_exact_ns(MS_TO_NANO * 1000);
 
         match fdd_seek_track00() {
             Some(cycles) => {
@@ -54,8 +60,9 @@ teensycore::main!({
                 }
             }
             None => {
+                debug_str(b"Did not find tack00");
+                wait_exact_ns(5000 * MS_TO_NANO);
                 fdd_set_motor(false);
-                debug_str(b"Did not find tack00\n");
             }
         }
 
