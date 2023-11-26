@@ -106,7 +106,7 @@ pub fn fdd_init() {
         pull_keep_en: true,
         open_drain: true,
         speed: PinSpeed::Max200MHz,
-        drive_strength: DriveStrength::MaxDiv3,
+        drive_strength: DriveStrength::Max,
         fast_slew_rate: true,
     };
 
@@ -183,7 +183,7 @@ pub fn fdd_set_motor(on: bool) {
 pub fn fdd_step(times: u8) {
     for _ in 0..times {
         pin_out(STEP_PIN, Power::Low);
-        wait_exact_ns(MICRO_TO_NANO / 5);
+        wait_exact_ns(MS_TO_NANO * 3);
         pin_out(STEP_PIN, Power::High);
         wait_exact_ns(MS_TO_NANO * 3);
     }

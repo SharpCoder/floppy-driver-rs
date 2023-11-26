@@ -19,14 +19,17 @@ teensycore::main!({
     // Create the floppy driver
     fdd_init();
 
+    wait_exact_ns(MS_TO_NANO * 1000);
+
     match fdd_read_write_protect() {
         true => debug_str(b"Media is write protected"),
         false => debug_str(b"Media is not write protected"),
     }
 
+    wait_exact_ns(MS_TO_NANO * 1000);
+
     loop {
         fdd_set_motor(true);
-        wait_exact_ns(MS_TO_NANO * 1000);
 
         match fdd_seek_track00() {
             Some(cycles) => {
