@@ -1,27 +1,36 @@
-use crate::config::{GATE_PIN, WRITE_PIN};
 use crate::fdd::fdd_read_index;
+use crate::timing;
+use core::arch::asm;
+use core::arch::global_asm;
 use teensycore::clock::F_CPU;
 use teensycore::prelude::*;
 
-const T2: u32 = (F_CPU * 2) / 1000000;
-const T3: u32 = (F_CPU * 3) / 1000000;
-const T4: u32 = (F_CPU * 4) / 1000000;
-
+// some magic here to calculate how many cycles per micro
+const CYCLES_PER_MICRO: u32 = F_CPU / 1000000;
+const T2: u32 = 2 * CYCLES_PER_MICRO;
+const T3: u32 = 3 * CYCLES_PER_MICRO;
+const T4: u32 = 4 * CYCLES_PER_MICRO;
 const T2_5: u32 = (F_CPU * 5) / 2 / 1000000;
 const T3_5: u32 = (F_CPU * 7) / 2 / 1000000;
 
 /**
- * This is a total hack. Read directly from the gpio register for pin 12.
- * Need to bypass the normal pin_read method in teensycore because that
- * thing is too bloated.
- */
+This is a total hack. Read directly from the gpio register for pin 12.
+ Need to bypass the normal pin_read method in teensycore because that
+ thing is too bloated.
+*/
 fn read_data() -> u32 {
+    let r = CYCLES_PER_MICRO;
     return read_word(teensycore::phys::addrs::GPIO7) & (0x1 << 1);
 }
 
-#[no_mangle]
 fn open_gate() {
-    pin_out(GATE_PIN, Power::High);
+    // Pull low
+    assign(addrs::GPIO7 + 0x88, 0x1 << 11);
+}
+
+fn close_gate() {
+    // Pull high
+    assign(addrs::GPIO7 + 0x84, 0x1 << 11);
 }
 
 #[derive(Copy, Clone)]
@@ -52,7 +61,7 @@ impl Parity {
 }
 
 #[derive(Copy, Clone)]
-enum Symbol {
+pub enum Symbol {
     Pulse10 = 0,
     Pulse100 = 1,
     Pulse1000 = 2,
@@ -94,8 +103,8 @@ static SYNC_PATTERN: [Symbol; 15] = [
  * Read a flux transition and time it to one of the 3 known pulse types.
  */
 #[no_mangle]
-fn mfm_read_sym() -> Symbol {
-    let mut pulses: u32 = 6;
+pub fn mfm_read_sym() -> Symbol {
+    let mut pulses: u32 = 0;
 
     while read_data() == 0 {
         pulses += 6;
@@ -215,9 +224,8 @@ pub fn mfm_read_bytes(arr: &mut [u8]) -> bool {
     return true;
 }
 
-pub fn mfm_write_bytes(bytes: &[u8]) {
-    // Open the flood gates!
-    pin_out(GATE_PIN, Power::Low);
+pub fn mfm_prepare_write(bytes: &[u8], flux_signals: &mut [Symbol; 4096]) -> usize {
+    let mut signal_index = 0;
 
     for i in 0..bytes.len() {
         let byte = bytes[i];
@@ -228,7 +236,7 @@ pub fn mfm_write_bytes(bytes: &[u8]) {
 
         let signal = mfm_encode_byte(byte, next);
 
-        // Parse the signal into symbols and emit them
+        // Parse the signal into symbols and record it
         let mut mask = 0x8000;
         let mut sym: i16 = -1;
         let mut begin = 0;
@@ -242,7 +250,8 @@ pub fn mfm_write_bytes(bytes: &[u8]) {
         for _ in begin..16 {
             let bit = signal & mask;
             if bit > 0 && sym >= 0 {
-                mfm_write_symbol(Symbol::from(sym - 1));
+                flux_signals[signal_index] = Symbol::from(sym);
+                signal_index += 1;
                 sym = 0;
             } else {
                 sym += 1;
@@ -252,28 +261,23 @@ pub fn mfm_write_bytes(bytes: &[u8]) {
         }
     }
 
-    pin_out(GATE_PIN, Power::High);
+    return signal_index;
 }
 
-fn mfm_write_symbol(sym: Symbol) {
-    let mut counter = 0;
-    let target = match sym {
-        Symbol::Pulse10 => T2,
-        Symbol::Pulse100 => T3,
-        Symbol::Pulse1000 => T4,
-    };
-
-    pin_out(WRITE_PIN, Power::Low);
-    wait_exact_ns(MICRO_TO_NANO * 1);
-    pin_out(WRITE_PIN, Power::High);
-
-    // Wait the requesite amount of time.
-    loop {
-        counter += 1;
-        if counter > target {
-            break;
+#[no_mangle]
+#[inline(never)]
+pub fn mfm_write_bytes(flux_signals: &[Symbol]) {
+    open_gate();
+    for sym in flux_signals {
+        unsafe {
+            let target = match sym {
+                Symbol::Pulse10 => timing::pulse_10(),
+                Symbol::Pulse100 => timing::pulse_100(),
+                Symbol::Pulse1000 => timing::pulse_1000(),
+            };
         }
     }
+    close_gate();
 }
 
 fn mfm_encode_byte(byte: u8, next: u8) -> u16 {
@@ -326,15 +330,19 @@ mod test_mfm {
         let byte = 0x3A;
         assert_eq!(mfm_encode_byte(byte, 0x00), 0b0100101010001001);
         assert_eq!(mfm_encode_byte(byte, 0xFF), 0b0100101010001000);
+
+        let signal = mfm_encode_byte(0xC1, 0x7A);
+        println!("{}", format!("{signal:016b}").as_str());
+        assert!(false);
     }
 
     #[test]
     pub fn test_emit() {
-        let byte = 0x3A;
-        let signal = mfm_encode_byte(byte, 0x00);
-        mfm_write_bytes(&[byte]);
+        // let byte = 0x3A;
+        // let signal = mfm_encode_byte(byte, 0x00);
+        // // mfm_write_bytes(&[byte]);
 
-        println!("{}", format!("{signal:016b}").as_str());
-        assert!(false);
+        // println!("{}", format!("{signal:016b}").as_str());
+        // assert!(false);
     }
 }

@@ -1,4 +1,5 @@
 #![allow(internal_features)]
+#![feature(global_asm)]
 #![feature(lang_items)]
 #![crate_type = "staticlib"]
 #![no_std]
@@ -6,20 +7,24 @@
 mod config;
 mod fdd;
 mod mfm;
+mod timing;
 
 use core::arch::asm;
 use fdd::*;
 use teensycore::prelude::*;
+use timing::*;
 
 #[cfg(feature = "testing")]
 extern crate std;
 
 #[cfg(not(feature = "testing"))]
 teensycore::main!({
+    wait_exact_ns(MS_TO_NANO * 1000);
+
     // Create the floppy driver
     fdd_init();
 
-    wait_exact_ns(MS_TO_NANO * 1000);
+    wait_exact_ns(MS_TO_NANO * 2000);
 
     match fdd_read_write_protect() {
         true => debug_str(b"Media is write protected"),
@@ -37,38 +42,52 @@ teensycore::main!({
                 print_u32(cycles as u32);
                 print(b" cycles!\n");
 
+                // tracks that are ruined
+                // 18
+                // 17
+                // 16
+                // 13
+                // 12
+                // 11
+                // 10
+
+                let head = 0;
+                let cylinder = 10;
+                let sector = 11;
+
                 // Write a sector
-                // fdd_write_sector(0, 18, 2, &[1, 2, 3, 1, 2, 3, 1, 2, 3, 4]);
+                debug_str(b"Beginning write seek...");
+                if fdd_write_sector(head, cylinder, sector, &[0x1, 0x2, 0x3, 0x4]) {
+                    debug_str(b"Write complete!");
+                    // Read a sector
+                    match fdd_read_sector(head, cylinder, sector) {
+                        None => {
+                            debug_str(b"Failed to find sector");
+                        }
+                        Some(sector) => {
+                            debug_str(b"Found the sector!!");
 
-                // Read a sector
-                match fdd_read_sector(0, 4, 3) {
-                    None => {
-                        debug_str(b"Failed to find sector");
-                    }
-                    Some(sector) => {
-                        debug_str(b"Found the sector!!");
-
-                        // Dump the first 50 bytes
-                        for i in 0..10 {
-                            debug_hex(sector.data[i] as u32, b"");
-                            wait_exact_ns(MS_TO_NANO);
+                            // Dump some bytes
+                            for i in 0..20 {
+                                debug_hex(sector.data[i] as u32, b"");
+                                wait_exact_ns(MS_TO_NANO);
+                            }
                         }
                     }
-                }
-
-                fdd_shutdown();
-
-                loop {
-                    assembly!("nop");
+                } else {
+                    debug_str(b"Failed to write");
                 }
             }
             None => {
                 debug_str(b"Did not find tack00");
-                wait_exact_ns(5000 * MS_TO_NANO);
-                fdd_set_motor(false);
             }
         }
 
-        wait_exact_ns(MS_TO_NANO * 5000);
+        debug_str(b"Entering sleep mode...");
+        fdd_shutdown();
+
+        loop {
+            assembly!("nop");
+        }
     }
 });

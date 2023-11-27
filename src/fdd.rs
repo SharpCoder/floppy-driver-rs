@@ -7,6 +7,7 @@ use teensycore::prelude::*;
 
 static mut FLOPPY_SIDE: u8 = 0;
 static mut FLOPPY_TRACK: u8 = 0;
+static mut FLOPPY_MOTOR_ON: bool = false;
 
 #[repr(C)]
 pub struct SectorID {
@@ -51,10 +52,26 @@ pub fn fdd_read_write_protect() -> bool {
 }
 
 /**
- * True if the track0 pin is pulled high
+ * True if the device is oriented on track0
  */
-pub fn fdd_read_track00() -> bool {
-    return pin_read(TRACK00_PIN) > 0;
+fn fdd_sense_track00() -> bool {
+    return pin_read(TRACK00_PIN) == 0;
+}
+
+/**
+ * Make the drive inactive
+ */
+fn fdd_drive_deselect() {
+    pin_out(DRIVE_PIN, Power::High);
+    wait_exact_ns(MS_TO_NANO * 500);
+}
+
+/** Make the drive active */
+fn fdd_drive_select() {
+    fdd_drive_deselect();
+
+    pin_out(DRIVE_PIN, Power::Low);
+    wait_exact_ns(MS_TO_NANO * 500);
 }
 
 /**
@@ -66,37 +83,37 @@ pub fn fdd_init() {
     let generic_config: PadConfig = PadConfig {
         hysterisis: false,
         resistance: PullUpDown::PullUp100k,
-        pull_keep: PullKeep::Pull,
+        pull_keep: PullKeep::Keeper,
         pull_keep_en: false,
         open_drain: false,
         speed: PinSpeed::Max200MHz,
-        drive_strength: DriveStrength::MaxDiv3,
+        drive_strength: DriveStrength::Max,
         fast_slew_rate: true,
     };
 
-    pin_pad_config(DRIVE_PIN, generic_config.clone());
-    pin_pad_config(MOTOR_PIN, generic_config.clone());
+    pin_pad_config(GATE_PIN, generic_config.clone());
     pin_pad_config(DIR_PIN, generic_config.clone());
     pin_pad_config(STEP_PIN, generic_config.clone());
-    pin_pad_config(WRITE_PIN, generic_config.clone());
-    pin_pad_config(GATE_PIN, generic_config.clone());
     pin_pad_config(HEAD_SEL_PIN, generic_config.clone());
+    pin_pad_config(DRIVE_PIN, generic_config.clone());
+    pin_pad_config(MOTOR_PIN, generic_config.clone());
+    pin_pad_config(WRITE_PIN, generic_config.clone());
 
     pin_out(DRIVE_PIN, Power::High);
     pin_out(MOTOR_PIN, Power::High);
-    pin_out(DIR_PIN, Power::Low);
+    pin_out(DIR_PIN, Power::High);
     pin_out(STEP_PIN, Power::High);
     pin_out(HEAD_SEL_PIN, Power::High);
-    pin_out(WRITE_PIN, Power::High);
     pin_out(GATE_PIN, Power::High);
+    pin_out(WRITE_PIN, Power::High);
 
-    pin_mode(DRIVE_PIN, Mode::Output);
-    pin_mode(MOTOR_PIN, Mode::Output);
     pin_mode(DIR_PIN, Mode::Output);
     pin_mode(STEP_PIN, Mode::Output);
+    pin_mode(GATE_PIN, Mode::Output);
     pin_mode(HEAD_SEL_PIN, Mode::Output);
     pin_mode(WRITE_PIN, Mode::Output);
-    pin_mode(GATE_PIN, Mode::Output);
+    pin_mode(DRIVE_PIN, Mode::Output);
+    pin_mode(MOTOR_PIN, Mode::Output);
 
     // Create a generic configuration for pullup resistors
     let pullup_config: PadConfig = PadConfig {
@@ -110,54 +127,57 @@ pub fn fdd_init() {
         fast_slew_rate: true,
     };
 
+    // Set them to outputs
+    pin_mode(INDEX_PIN, Mode::Input);
+    pin_mode(TRACK00_PIN, Mode::Input);
+    pin_mode(WRITE_PROTECT_PIN, Mode::Input);
+    pin_mode(READY_PIN, Mode::Input);
+    pin_mode(READ_PIN, Mode::Input);
     pin_pad_config(INDEX_PIN, pullup_config.clone());
     pin_pad_config(TRACK00_PIN, pullup_config.clone());
     pin_pad_config(WRITE_PROTECT_PIN, pullup_config.clone());
     pin_pad_config(READY_PIN, pullup_config.clone());
     pin_pad_config(READ_PIN, pullup_config.clone());
-
-    // Set them to outputs
-    pin_mode(INDEX_PIN, Mode::Input);
-    pin_mode(TRACK00_PIN, Mode::Input);
-    pin_mode(WRITE_PROTECT_PIN, Mode::Input);
-    pin_mode(READ_PIN, Mode::Input);
-    pin_mode(READY_PIN, Mode::Input);
 }
 
 /**
  * Change the state of the motor.
  */
 pub fn fdd_set_motor(on: bool) {
-    let motor_active = pin_read(MOTOR_PIN);
+    let motor_active = unsafe { FLOPPY_MOTOR_ON };
 
     // If the motor is unchanged, don't do anything
-    if motor_active > 0 && !on || motor_active == 0 && on {
+    if on == motor_active {
         return;
     }
 
     if on {
-        // Disable writing
-        pin_out(GATE_PIN, Power::High);
-        pin_out(WRITE_PIN, Power::Low);
-        // And disable everything else, too
-        pin_out(DRIVE_PIN, Power::High);
-        pin_out(MOTOR_PIN, Power::High);
-        wait_exact_ns(MS_TO_NANO * 3000);
-        pin_out(DIR_PIN, Power::High);
-        pin_out(DRIVE_PIN, Power::Low);
+        // Turn on the motor
         pin_out(MOTOR_PIN, Power::Low);
-        wait_exact_ns(MS_TO_NANO * 1000);
+        // Select the drive
+        fdd_drive_select();
+        // Seek to 0
+        match fdd_seek_track00() {
+            None => {
+                debug_str(b"Failed power-on calibration");
+            }
+            Some(_) => {
+                debug_str(b"Successfully calibrated track");
+            }
+        }
     } else {
+        fdd_drive_deselect();
         pin_out(MOTOR_PIN, Power::High);
     }
 
     if !on {
         debug_str(b"Shutting down motor");
+
+        unsafe {
+            FLOPPY_MOTOR_ON = false;
+        }
         return;
     }
-
-    debug_str(b"Cycle the power...");
-    wait_exact_ns(MS_TO_NANO * 6000);
 
     debug_str(b"Spinning up motor");
     debug_str(b"Waiting for index pulse...");
@@ -171,6 +191,9 @@ pub fn fdd_set_motor(on: bool) {
 
     if fdd_read_index() == 0 {
         debug_str(b"Received index pulse!");
+        unsafe {
+            FLOPPY_MOTOR_ON = true;
+        }
     } else {
         debug_str(b"Did not receive index pulse");
         pin_out(MOTOR_PIN, Power::High);
@@ -189,13 +212,9 @@ pub fn fdd_step(times: u8) {
     }
 }
 
-pub fn fdd_step_dir(dir: Power) {
-    pin_out(DIR_PIN, Power::Low);
-    wait_exact_ns(18 * MS_TO_NANO);
-    pin_out(DIR_PIN, Power::High);
-    wait_exact_ns(18 * MS_TO_NANO);
+fn fdd_step_dir(dir: Power) {
     pin_out(DIR_PIN, dir);
-    wait_exact_ns(18 * MS_TO_NANO);
+    wait_exact_ns(20 * MS_TO_NANO);
 }
 
 /**
@@ -204,9 +223,10 @@ pub fn fdd_step_dir(dir: Power) {
 pub fn fdd_seek_track00() -> Option<usize> {
     let mut cycles: usize = 0;
 
+    debug_str(b"Seeking outwards...");
     fdd_step_dir(Power::High);
-    for _ in 0..100 {
-        if !fdd_read_track00() {
+    for _ in 0..120 {
+        if fdd_sense_track00() {
             unsafe {
                 FLOPPY_TRACK = 0;
             }
@@ -216,12 +236,12 @@ pub fn fdd_seek_track00() -> Option<usize> {
 
         cycles += 1;
         fdd_step(1);
-        debug_str(b"Stepping 1");
     }
 
+    debug_str(b"Seeking inwards...");
     fdd_step_dir(Power::Low);
     for _ in 0..20 {
-        if !fdd_read_track00() {
+        if fdd_sense_track00() {
             unsafe {
                 FLOPPY_TRACK = 0;
             }
@@ -258,6 +278,14 @@ fn fdd_set_track(track: u8) {
     }
 }
 
+fn fdd_fix_track(desired_track: u8, sampled_track: u8) {
+    unsafe {
+        FLOPPY_TRACK = sampled_track;
+    }
+
+    fdd_set_track(desired_track);
+}
+
 fn fdd_set_side(side: u8) {
     if side == 0 {
         pin_out(HEAD_SEL_PIN, Power::High);
@@ -280,8 +308,11 @@ pub fn fdd_read_sector(head: u8, cylinder: u8, sector: u8) -> Option<SectorID> {
     while error < 36 {
         if (mfm_sync()) {
             mfm_read_bytes(&mut buf);
-            // Verify sector
-            if buf[0] == 0xFE && buf[1] == cylinder && buf[2] == head && buf[3] == sector {
+
+            // If we're on the wrong track, shimmy over to the correct one
+            if buf[0] == 0xFE && buf[1] != cylinder {
+                fdd_fix_track(cylinder, buf[1] as u8);
+            } else if buf[0] == 0xFE && buf[1] == cylinder && buf[2] == head && buf[3] == sector {
                 ret.id = buf[0];
                 ret.cylinder = buf[1];
                 ret.head = buf[2];
@@ -309,34 +340,57 @@ pub fn fdd_read_sector(head: u8, cylinder: u8, sector: u8) -> Option<SectorID> {
     return None;
 }
 
-pub fn fdd_write_sector(head: u8, cylinder: u8, sector: u8, data: &[u8]) {
+pub fn fdd_write_sector(head: u8, cylinder: u8, sector: u8, data: &[u8]) -> bool {
     // The algorithm will work like so:
     // First, seek the sector we want and then read the first 60 bytes
     // which are the metadata. Compare with target. If approved then
     // write based on timing.
-    fdd_set_track(cylinder);
     fdd_set_side(head);
+    fdd_set_track(cylinder);
     let mut error = 0usize;
-    let mut buf: [u8; 60] = [0; 60];
+    let mut buf: [u8; 15] = [0; 15];
+    let mut byte_buf: [u8; 1] = [0; 1];
+    let mut flux_signals: [Symbol; 4096] = [Symbol::Pulse10; 4096];
 
-    while error < 36 {
+    // Prepare the data
+    let signal_count = mfm_prepare_write(data, &mut flux_signals);
+    let mut latch = false;
+
+    while error < 10 {
         if (mfm_sync()) {
             mfm_read_bytes(&mut buf);
-            // Verify sector
-            if buf[0] == 0xFE && buf[1] == cylinder && buf[2] == head && buf[3] == sector {
-                // Write the data
-                mfm_write_bytes(&data);
-                return;
+
+            // If we're on the wrong track, shimmy over to the correct one
+            if buf[0] == 0xFE && buf[1] != cylinder {
+                fdd_fix_track(cylinder, buf[1] as u8);
+            } else if buf[0] == 0xFE && buf[1] == cylinder && buf[2] == head && buf[3] == sector {
+                mfm_sync();
+                mfm_read_bytes(&mut byte_buf);
+
+                if byte_buf[0] == 0xFB || byte_buf[0] == 0xFA {
+                    // Write the data
+                    // debug_str(b"Found sector");
+                    mfm_write_bytes(&flux_signals[0..signal_count]);
+                    return true;
+                } else {
+                    debug_str(b"Failed to synchronize the bytes");
+                    debug_u64(byte_buf[0] as u64, b"byte_buf[0]");
+                    return false;
+                }
             }
         }
 
         if fdd_read_index() == 0 {
-            while fdd_read_index() == 0 {
-                assembly!("nop");
+            if latch == false {
+                error += 1;
             }
-            error += 1;
+            latch = true;
+        } else {
+            latch = false;
         }
     }
+
+    return false;
 }
 
 /**
