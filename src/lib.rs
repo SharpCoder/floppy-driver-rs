@@ -19,7 +19,19 @@ extern crate std;
 
 #[cfg(not(feature = "testing"))]
 teensycore::main!({
-    wait_exact_ns(MS_TO_NANO * 1000);
+    wait_exact_ns(MS_TO_NANO * 2000);
+
+    // loop {
+    //     unsafe {
+    //         let start = nanos() / MS_TO_NANO;
+    //         pin_out(13, Power::High);
+    //         wait_cycle(F_CPU * 5);
+    //         let end = nanos() / MS_TO_NANO;
+    //         debug_u64((end - start) as u64, b"Timing");
+    //         pin_out(13, Power::Low);
+    //         wait_cycle(F_CPU * 5);
+    //     }
+    // }
 
     // Create the floppy driver
     fdd_init();
@@ -42,22 +54,13 @@ teensycore::main!({
                 print_u32(cycles as u32);
                 print(b" cycles!\n");
 
-                // tracks that are ruined
-                // 18
-                // 17
-                // 16
-                // 13
-                // 12
-                // 11
-                // 10
-
                 let head = 0;
                 let cylinder = 10;
-                let sector = 11;
+                let sector = 12;
 
                 // Write a sector
                 debug_str(b"Beginning write seek...");
-                if fdd_write_sector(head, cylinder, sector, &[0x2, 0x3, 0x4, 0x5]) {
+                if fdd_write_sector(head, cylinder, sector, &[0x10, 0x20, 0x30, 0x40]) {
                     debug_str(b"Write complete!");
                     // Read a sector
                     match fdd_read_sector(head, cylinder, sector) {

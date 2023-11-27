@@ -10,8 +10,8 @@ const CYCLES_PER_MICRO: u32 = F_CPU / 1000000;
 const T2: u32 = 2 * CYCLES_PER_MICRO;
 const T3: u32 = 3 * CYCLES_PER_MICRO;
 const T4: u32 = 4 * CYCLES_PER_MICRO;
-const T2_5: u32 = (F_CPU * 5) / 2 / 1000000;
-const T3_5: u32 = (F_CPU * 7) / 2 / 1000000;
+const T2_5: u32 = (CLOCK_CPU * 5) / 2 / 1000000;
+const T3_5: u32 = (CLOCK_CPU * 7) / 2 / 1000000;
 
 /**
 This is a total hack. Read directly from the gpio register for pin 12.
