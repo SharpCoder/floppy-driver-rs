@@ -57,7 +57,7 @@ teensycore::main!({
 
                 // Write a sector
                 debug_str(b"Beginning write seek...");
-                if fdd_write_sector(head, cylinder, sector, &[0x1, 0x2, 0x3, 0x4]) {
+                if fdd_write_sector(head, cylinder, sector, &[0x2, 0x3, 0x4, 0x5]) {
                     debug_str(b"Write complete!");
                     // Read a sector
                     match fdd_read_sector(head, cylinder, sector) {

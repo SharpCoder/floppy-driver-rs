@@ -10,9 +10,14 @@ extern "C" {
     #[inline(never)]
     pub fn pulse_10();
     #[link_section = ".text.main"]
+    #[inline(never)]
     pub fn pulse_100();
     #[link_section = ".text.main"]
+    #[inline(never)]
     pub fn pulse_1000();
+    #[link_section = ".text.main"]
+    #[inline(never)]
+    pub fn debug_wait_cycle() -> u32;
 }
 
 #[no_mangle]
