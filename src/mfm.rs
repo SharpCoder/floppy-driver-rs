@@ -12,10 +12,12 @@ extern "C" {
     pub fn _asm_sync() -> bool;
 }
 
-// const CYCLES_PER_MICRO: u32 = F_CPU / 1000000;
-const T2: u32 = 544; //1.375 * CYCLES_PER_MICRO;
-const T3: u32 = 940; //2.375 * CYCLES_PER_MICRO;
-const T4: u32 = 1336; //3.375 * CYCLES_PER_MICRO;
+const CYCLES_PER_MICRO: u32 = F_CPU / 1000000;
+const CLOCK_PER_MICRO: u32 = CLOCK_CPU / 1000000;
+
+const T2: u32 = 544 / 2; //1.375 * CYCLES_PER_MICRO;
+const T3: u32 = 940 / 2; //2.375 * CYCLES_PER_MICRO;
+const T4: u32 = 1336 / 2; //3.375 * CYCLES_PER_MICRO;
 
 /**
 This is a total hack. Read directly from the gpio register for pin 12.
@@ -23,8 +25,11 @@ This is a total hack. Read directly from the gpio register for pin 12.
  thing is too bloated.
 */
 #[no_mangle]
+#[inline(never)]
 fn read_data() -> u32 {
-    return read_word(teensycore::phys::addrs::GPIO7) & (0x1 << 1);
+    unsafe {
+        return *(addrs::GPIO7 as *mut u32) & (0x1 << 1);
+    }
 }
 
 fn open_gate() {
@@ -38,13 +43,21 @@ fn close_gate() {
 }
 
 #[no_mangle]
+#[link_section = ".text"]
+#[inline(never)]
 fn data_low() {
-    assign(addrs::GPIO7 + 0x88, 0x1 << 16);
+    unsafe {
+        *((addrs::GPIO7 + 0x88) as *mut u32) = 0x1 << 16;
+    }
 }
 
 #[no_mangle]
+#[link_section = ".text"]
+#[inline(never)]
 fn data_high() {
-    assign(addrs::GPIO7 + 0x84, 0x1 << 16);
+    unsafe {
+        *((addrs::GPIO7 + 0x84) as *mut u32) = 0x1 << 16;
+    }
 }
 
 #[derive(Copy, Clone)]

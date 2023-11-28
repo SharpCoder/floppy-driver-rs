@@ -1,3 +1,5 @@
+.section .text
+
 .extern read_data
 .extern data_high
 .extern data_low
@@ -38,14 +40,14 @@ _asm_read_sym:
 
     @ Wait for the pin to be held low
     while_low:
-        add r1,#12
+        add r1,#5
         bl read_data
         cmp r0,#0
         beq while_low
     
     @ Wait for the pin to be held high
     while_high:
-        add r1,#12
+        add r1,#5
         bl read_data
         cmp r0,#0
         bne while_high
@@ -83,7 +85,7 @@ _asm_sync:
     @ Check if we're past the index
     bl fdd_read_index
     cmp r0,#0
-    beq err
+    @ beq err
     
 
     restart:

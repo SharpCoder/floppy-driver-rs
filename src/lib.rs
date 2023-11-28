@@ -48,9 +48,13 @@ teensycore::main!({
                 mfm_dump_stats();
 
                 // Wait for a barrier
-                // mfm::mfm_sync();
-
-                // debug_str(b"Found barrier!");
+                if mfm::mfm_sync() || mfm::mfm_sync() {
+                    debug_str(b"Found barrier!");
+                } else {
+                    debug_str(b"Did not find a barrier");
+                    fdd_shutdown();
+                    loop {}
+                }
 
                 let mut flux_signals: [Symbol; 4096] = [Symbol::Pulse10; 4096];
                 const FLUX_COUNT: usize = 40;

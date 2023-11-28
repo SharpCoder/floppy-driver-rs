@@ -41,8 +41,12 @@ impl SectorID {
  * Bypassing the pin_read method of teensycore because it's too slow.
  */
 #[no_mangle]
+#[link_section = ".text"]
+#[inline(never)]
 pub fn fdd_read_index() -> u32 {
-    return read_word(addrs::GPIO9) & (0x1 << 5);
+    unsafe {
+        return *(addrs::GPIO9 as *mut u32) & (0x1 << 5);
+    }
 }
 
 /**
