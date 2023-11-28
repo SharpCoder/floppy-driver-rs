@@ -1,7 +1,16 @@
 use crate::fdd::fdd_read_index;
-use crate::timing;
 use core::arch::asm;
+use core::arch::global_asm;
 use teensycore::prelude::*;
+
+#[cfg(not(feature = "testing"))]
+global_asm!(include_str!("mfm.S"));
+
+extern "C" {
+    pub fn _asm_pulse(cycles: u32);
+    pub fn _asm_read_sym() -> i16;
+    pub fn _asm_sync() -> bool;
+}
 
 // const CYCLES_PER_MICRO: u32 = F_CPU / 1000000;
 const T2: u32 = 544; //1.375 * CYCLES_PER_MICRO;
@@ -18,16 +27,24 @@ fn read_data() -> u32 {
     return read_word(teensycore::phys::addrs::GPIO7) & (0x1 << 1);
 }
 
-#[inline]
 fn open_gate() {
     // Pull low
     assign(addrs::GPIO7 + 0x88, 0x1 << 11);
 }
 
-#[inline]
 fn close_gate() {
     // Pull high
     assign(addrs::GPIO7 + 0x84, 0x1 << 11);
+}
+
+#[no_mangle]
+fn data_low() {
+    assign(addrs::GPIO7 + 0x88, 0x1 << 16);
+}
+
+#[no_mangle]
+fn data_high() {
+    assign(addrs::GPIO7 + 0x84, 0x1 << 16);
 }
 
 #[derive(Copy, Clone)]
@@ -76,7 +93,7 @@ impl Symbol {
 
 #[cfg(not(testing))]
 pub fn mfm_read_sym() -> Symbol {
-    return unsafe { Symbol::from(timing::read_sym()) };
+    return unsafe { Symbol::from(_asm_read_sym()) };
 }
 
 /**
@@ -127,7 +144,7 @@ pub fn mfm_read_flux(dst: &mut [Symbol; 4096], len: usize) {
 #[cfg(not(testing))]
 pub fn mfm_sync() -> bool {
     unsafe {
-        return timing::mfm_sync();
+        return _asm_sync();
     }
 }
 
@@ -249,9 +266,9 @@ pub fn mfm_write_bytes(flux_signals: &[Symbol]) {
     for sym in flux_signals {
         unsafe {
             match sym {
-                Symbol::Pulse10 => timing::pulse(T2),
-                Symbol::Pulse100 => timing::pulse(T3),
-                Symbol::Pulse1000 => timing::pulse(T4),
+                Symbol::Pulse10 => _asm_pulse(T2),
+                Symbol::Pulse100 => _asm_pulse(T3),
+                Symbol::Pulse1000 => _asm_pulse(T4),
             };
         }
     }

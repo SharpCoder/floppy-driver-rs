@@ -6,7 +6,6 @@
 mod config;
 mod fdd;
 mod mfm;
-mod timing;
 
 use core::arch::asm;
 use fdd::*;

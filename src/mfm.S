@@ -4,10 +4,9 @@
 .extern data_low
 .extern fdd_read_index
 
-.global wait_cycle
-.global pulse
-.global read_sym
-.global mfm_sync
+.global _asm_pulse
+.global _asm_read_sym
+.global _asm_sync
 
 @ 3 overhead
 wait_cycle:
@@ -19,7 +18,7 @@ wait_cycle:
     pop	{{pc}}
 
 
-pulse:
+_asm_pulse:
     push {{r0, r6, lr}} @ 4
     mov r6,r0 @ 1
     bl data_low @ 5
@@ -34,7 +33,7 @@ pulse:
 
 @ This method will read a single flux transition and time it to one 
 @ of the 3 known pulse types.
-read_sym:
+_asm_read_sym:
     push {{r1, lr}}
     
     @ Load r1 with 0. This will be our pulse counter
@@ -79,7 +78,7 @@ read_sym:
 @ This method will synchronize the clock with
 @ 12 bytes of 0x0 
 @ 3 bytes of 0xA1 
-mfm_sync:
+_asm_sync:
     push {{r1,r2,r3,lr}}
     mov r1, #0
 
@@ -105,7 +104,7 @@ mfm_sync:
     @ otherwise, reset. Compare with #80 and
     @ if matching, then break to next segment
 
-    bl read_sym
+    bl _asm_read_sym
     cmp r0,#0
     bne restart @ restart if its not 0
     add r1,#1
@@ -124,59 +123,59 @@ mfm_sync:
     cmp r0,#1 @ M
     bne full_restart
 
-    bl read_sym
+    bl _asm_read_sym
     cmp r0,#2 @ L
     bne full_restart
 
-    bl read_sym
+    bl _asm_read_sym
     cmp r0,#1 @ M
     bne full_restart
 
-    bl read_sym
+    bl _asm_read_sym
     cmp r0,#2 @ L
     bne full_restart
 
-    bl read_sym
+    bl _asm_read_sym
     cmp r0,#1 @ M
     bne full_restart
 
-    bl read_sym
+    bl _asm_read_sym
     cmp r0,#0 @ S
     bne full_restart
 
-    bl read_sym
+    bl _asm_read_sym
     cmp r0,#2 @ L
     bne full_restart
 
-    bl read_sym
+    bl _asm_read_sym
     cmp r0,#1 @ M
     bne full_restart
 
-    bl read_sym
+    bl _asm_read_sym
     cmp r0,#2 @ L
     bne full_restart
 
-    bl read_sym
+    bl _asm_read_sym
     cmp r0,#1 @ M
     bne full_restart
 
-    bl read_sym
+    bl _asm_read_sym
     cmp r0,#0 @ S
     bne full_restart
 
-    bl read_sym
+    bl _asm_read_sym
     cmp r0,#2 @ L
     bne full_restart
 
-    bl read_sym
+    bl _asm_read_sym
     cmp r0,#1 @ M
     bne full_restart
 
-    bl read_sym
+    bl _asm_read_sym
     cmp r0,#2 @ L
     bne full_restart
 
-    bl read_sym
+    bl _asm_read_sym
     cmp r0,#1 @ M
     bne full_restart
 
