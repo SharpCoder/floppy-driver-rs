@@ -1,4 +1,3 @@
-.section .text.main
 .extern read_data
 .extern data_high
 .extern data_low
@@ -8,25 +7,23 @@
 .global _asm_read_sym
 .global _asm_sync
 
-@ 3 overhead
 wait_cycle:
     push {{lr}}
     top:
-    @ Begin the loop
     subs r0,#1
     bcs top
     pop	{{pc}}
 
 
 _asm_pulse:
-    push {{r0, r6, lr}} @ 4
-    mov r6,r0 @ 1
-    bl data_low @ 5
-    sub r6, #148 @ 1
-    mov r0, #148 @ 1
+    push {{r0, r6, lr}}
+    mov r6,r0
+    bl data_low 
+    sub r6, #148
+    mov r0, #148
     bl wait_cycle 
-    bl data_high @ 5
-    mov r0,r6 @ 1
+    bl data_high
+    mov r0,r6
     bl wait_cycle 
     pop	{{r0, r6, pc}}
 
