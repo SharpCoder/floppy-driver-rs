@@ -5,21 +5,22 @@ use core::arch::global_asm;
 use teensycore::clock::F_CPU;
 use teensycore::prelude::*;
 
-// some magic here to calculate how many cycles per micro
 const CYCLES_PER_MICRO: u32 = F_CPU / 1000000;
+const CLOCKS_PER_MICRO: u32 = CLOCK_CPU / 1000000;
+
 const T2: u32 = 2 * CYCLES_PER_MICRO;
 const T3: u32 = 3 * CYCLES_PER_MICRO;
 const T4: u32 = 4 * CYCLES_PER_MICRO;
-const T2_5: u32 = (CLOCK_CPU * 5) / 2 / 1000000;
-const T3_5: u32 = (CLOCK_CPU * 7) / 2 / 1000000;
+const T2_5: u32 = (CLOCKS_PER_MICRO * 5) / 2 / 1;
+const T3_5: u32 = (CLOCKS_PER_MICRO * 7) / 2 / 1;
 
 /**
 This is a total hack. Read directly from the gpio register for pin 12.
  Need to bypass the normal pin_read method in teensycore because that
  thing is too bloated.
 */
+#[no_mangle]
 fn read_data() -> u32 {
-    let r = CYCLES_PER_MICRO;
     return read_word(teensycore::phys::addrs::GPIO7) & (0x1 << 1);
 }
 
@@ -99,29 +100,69 @@ static SYNC_PATTERN: [Symbol; 15] = [
     Symbol::Pulse100,
 ];
 
-/**
- * Read a flux transition and time it to one of the 3 known pulse types.
- */
-#[no_mangle]
 pub fn mfm_read_sym() -> Symbol {
-    let mut pulses: u32 = 0;
-
-    while read_data() == 0 {
-        pulses += 6;
-    }
-
-    while read_data() > 0 {
-        pulses += 6;
-    }
-
-    if pulses < T2_5 {
-        return Symbol::Pulse10;
-    } else if pulses > T3_5 {
-        return Symbol::Pulse1000;
-    } else {
-        return Symbol::Pulse100;
-    }
+    return unsafe { Symbol::from(timing::read_sym()) };
 }
+
+/**
+This method will dump the bucketed counts of symbols across
+one index loop
+ */
+pub fn mfm_dump_stats() {
+    while fdd_read_index() != 0 {
+        assembly!("nop");
+    }
+
+    while fdd_read_index() == 0 {
+        assembly!("nop");
+    }
+
+    let mut pulse_10 = 0;
+    let mut pulse_100 = 0;
+    let mut pulse_1000 = 0;
+
+    while fdd_read_index() != 0 {
+        match mfm_read_sym() {
+            Symbol::Pulse10 => {
+                pulse_10 += 1;
+            }
+            Symbol::Pulse100 => {
+                pulse_100 += 1;
+            }
+            Symbol::Pulse1000 => {
+                pulse_1000 += 1;
+            }
+        }
+    }
+
+    debug_u64(pulse_10 as u64, b"pulse_10");
+    debug_u64(pulse_100 as u64, b"pulse_100");
+    debug_u64(pulse_1000 as u64, b"pulse_1000");
+}
+
+// /**
+//  * Read a flux transition and time it to one of the 3 known pulse types.
+//  */
+// #[no_mangle]
+// pub fn mfm_read_sym() -> Symbol {
+//     let mut pulses: u32 = 0;
+
+//     while read_data() == 0 {
+//         pulses += 6;
+//     }
+
+//     while read_data() > 0 {
+//         pulses += 6;
+//     }
+
+//     if pulses < T2_5 {
+//         return Symbol::Pulse10;
+//     } else if pulses > T3_5 {
+//         return Symbol::Pulse1000;
+//     } else {
+//         return Symbol::Pulse100;
+//     }
+// }
 
 /**
  * Wait for a synchronization byte marker
@@ -271,9 +312,9 @@ pub fn mfm_write_bytes(flux_signals: &[Symbol]) {
     for sym in flux_signals {
         unsafe {
             let target = match sym {
-                Symbol::Pulse10 => timing::pulse_10(),
-                Symbol::Pulse100 => timing::pulse_100(),
-                Symbol::Pulse1000 => timing::pulse_1000(),
+                Symbol::Pulse10 => timing::pulse(T2),
+                Symbol::Pulse100 => timing::pulse(T3),
+                Symbol::Pulse1000 => timing::pulse(T4),
             };
         }
     }

@@ -370,6 +370,7 @@ pub fn fdd_write_sector(head: u8, cylinder: u8, sector: u8, data: &[u8]) -> bool
                 if byte_buf[0] == 0xFB || byte_buf[0] == 0xFA {
                     // Write the data
                     // debug_str(b"Found sector");
+                    mfm_read_sym();
                     mfm_write_bytes(&flux_signals[0..signal_count]);
                     return true;
                 } else {

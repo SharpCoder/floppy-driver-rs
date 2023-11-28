@@ -11,6 +11,7 @@ mod timing;
 
 use core::arch::asm;
 use fdd::*;
+use mfm::mfm_dump_stats;
 use teensycore::prelude::*;
 use timing::*;
 
@@ -23,13 +24,13 @@ teensycore::main!({
 
     // loop {
     //     unsafe {
-    //         let start = nanos() / MS_TO_NANO;
+    //         let start = nanos() / MICRO_TO_NANO;
     //         pin_out(13, Power::High);
-    //         wait_cycle(F_CPU * 5);
-    //         let end = nanos() / MS_TO_NANO;
+    //         wait_cycle(CYCLES_PER_MICRO * 3000000);
+    //         let end = nanos() / MICRO_TO_NANO;
     //         debug_u64((end - start) as u64, b"Timing");
     //         pin_out(13, Power::Low);
-    //         wait_cycle(F_CPU * 5);
+    //         wait_cycle(F_CPU as u32 * 2);
     //     }
     // }
 
@@ -54,9 +55,12 @@ teensycore::main!({
                 print_u32(cycles as u32);
                 print(b" cycles!\n");
 
+                // 10 is ruined
                 let head = 0;
-                let cylinder = 10;
-                let sector = 12;
+                let cylinder = 11;
+                let sector = 14;
+
+                mfm_dump_stats();
 
                 // Write a sector
                 debug_str(b"Beginning write seek...");
