@@ -2,12 +2,12 @@
 .extern read_data
 .extern data_high
 .extern data_low
+.extern fdd_read_index
+
 .global wait_cycle
 .global pulse
 .global read_sym
-
-T2_5: .word 990
-T3_5: .word 1386
+.global mfm_sync
 
 @ 3 overhead
 wait_cycle:
@@ -20,17 +20,16 @@ wait_cycle:
 
 
 pulse:
-    push {{r0, r1, r6, lr}} @ 4
+    push {{r0, r6, lr}} @ 4
     mov r6,r0 @ 1
     bl data_low @ 5
-    mov r0,#132 @ 1
-    sub r6, #132 @ 1
+    sub r6, #148 @ 1
+    mov r0, #148 @ 1
     bl wait_cycle 
     bl data_high @ 5
-    sub r6, #18 @ Everything else
     mov r0,r6 @ 1
     bl wait_cycle 
-    pop	{{r0, r1, r6, pc}}
+    pop	{{r0, r6, pc}}
 
 
 @ This method will read a single flux transition and time it to one 
@@ -81,4 +80,112 @@ read_sym:
 @ 12 bytes of 0x0 
 @ 3 bytes of 0xA1 
 mfm_sync:
-    bx lr
+    push {{r1,r2,r3,lr}}
+    mov r1, #0
+
+    full_restart:
+    @ Check if we're past the index
+    bl fdd_read_index
+    cmp r0,#0
+    beq err
+    
+
+    restart:
+    @ If we encounter something that isn't a short pulse
+    @ first check if we've collected enough to indicate
+    @ that we're ready for signal processing.
+    cmp r1,#80
+    bge process_signal
+    
+    @ Otherwise, do the actual restart
+    mov r1,#0
+
+    s80_loop: @ Short 80 pulses
+    @ Read a symbol, if its a short, increment
+    @ otherwise, reset. Compare with #80 and
+    @ if matching, then break to next segment
+
+    bl read_sym
+    cmp r0,#0
+    bne restart @ restart if its not 0
+    add r1,#1
+    cmp r1,#80
+    b s80_loop @ loop if we're less than 80 yet
+
+    @ If we get here, we've found 80 pulses
+    @ M L M L M S L M L M S L M L M
+    process_signal:
+
+    @ Reset the short pulses
+    mov r1,#0
+
+    @ When we get here, we've still got one pulse in the buffer
+    @ so we can directly evaluate it.
+    cmp r0,#1 @ M
+    bne full_restart
+
+    bl read_sym
+    cmp r0,#2 @ L
+    bne full_restart
+
+    bl read_sym
+    cmp r0,#1 @ M
+    bne full_restart
+
+    bl read_sym
+    cmp r0,#2 @ L
+    bne full_restart
+
+    bl read_sym
+    cmp r0,#1 @ M
+    bne full_restart
+
+    bl read_sym
+    cmp r0,#0 @ S
+    bne full_restart
+
+    bl read_sym
+    cmp r0,#2 @ L
+    bne full_restart
+
+    bl read_sym
+    cmp r0,#1 @ M
+    bne full_restart
+
+    bl read_sym
+    cmp r0,#2 @ L
+    bne full_restart
+
+    bl read_sym
+    cmp r0,#1 @ M
+    bne full_restart
+
+    bl read_sym
+    cmp r0,#0 @ S
+    bne full_restart
+
+    bl read_sym
+    cmp r0,#2 @ L
+    bne full_restart
+
+    bl read_sym
+    cmp r0,#1 @ M
+    bne full_restart
+
+    bl read_sym
+    cmp r0,#2 @ L
+    bne full_restart
+
+    bl read_sym
+    cmp r0,#1 @ M
+    bne full_restart
+
+    mov r0,#1
+    pop {{r1,r2,r3,pc}}
+
+    @ This condition signifies that we've
+    @ hit an index loop and must terminate
+    @ during this cycle.
+    err:
+    mov r0,#0
+    pop {{r1,r2,r3,pc}}

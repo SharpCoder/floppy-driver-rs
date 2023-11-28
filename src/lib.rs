@@ -1,5 +1,4 @@
 #![allow(internal_features)]
-#![feature(global_asm)]
 #![feature(lang_items)]
 #![crate_type = "staticlib"]
 #![no_std]
@@ -11,9 +10,8 @@ mod timing;
 
 use core::arch::asm;
 use fdd::*;
-use mfm::mfm_dump_stats;
+use mfm::{mfm_dump_stats, Symbol};
 use teensycore::prelude::*;
-use timing::*;
 
 #[cfg(feature = "testing")]
 extern crate std;
@@ -21,18 +19,6 @@ extern crate std;
 #[cfg(not(feature = "testing"))]
 teensycore::main!({
     wait_exact_ns(MS_TO_NANO * 2000);
-
-    // loop {
-    //     unsafe {
-    //         let start = nanos() / MICRO_TO_NANO;
-    //         pin_out(13, Power::High);
-    //         wait_cycle(CYCLES_PER_MICRO * 3000000);
-    //         let end = nanos() / MICRO_TO_NANO;
-    //         debug_u64((end - start) as u64, b"Timing");
-    //         pin_out(13, Power::Low);
-    //         wait_cycle(F_CPU as u32 * 2);
-    //     }
-    // }
 
     // Create the floppy driver
     fdd_init();
@@ -58,14 +44,52 @@ teensycore::main!({
                 // 10 is ruined
                 let head = 0;
                 let cylinder = 11;
-                let sector = 14;
+                let sector = 16;
 
                 mfm_dump_stats();
 
+                // Wait for a barrier
+                // mfm::mfm_sync();
+
+                // debug_str(b"Found barrier!");
+
+                let mut flux_signals: [Symbol; 4096] = [Symbol::Pulse10; 4096];
+                const FLUX_COUNT: usize = 40;
+
                 // Write a sector
                 debug_str(b"Beginning write seek...");
-                if fdd_write_sector(head, cylinder, sector, &[0x10, 0x20, 0x30, 0x40]) {
+                if fdd_write_sector(
+                    head,
+                    cylinder,
+                    sector,
+                    &[0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10],
+                ) {
                     debug_str(b"Write complete!");
+                    // Debug a sector
+                    match fdd_debug_sector(head, cylinder, sector, &mut flux_signals, FLUX_COUNT) {
+                        false => {
+                            debug_str(b"Failed to find sector after write operation");
+                        }
+                        _ => {
+                            let mut pulses: [u8; FLUX_COUNT] = [0; FLUX_COUNT];
+                            for i in 0..FLUX_COUNT {
+                                match flux_signals[i] {
+                                    Symbol::Pulse10 => {
+                                        pulses[i] = b'S';
+                                    }
+                                    Symbol::Pulse100 => {
+                                        pulses[i] = b'M';
+                                    }
+                                    Symbol::Pulse1000 => {
+                                        pulses[i] = b'L';
+                                    }
+                                }
+                            }
+
+                            debug_str(&pulses);
+                        }
+                    }
+
                     // Read a sector
                     match fdd_read_sector(head, cylinder, sector) {
                         None => {
@@ -75,7 +99,7 @@ teensycore::main!({
                             debug_str(b"Found the sector!!");
 
                             // Dump some bytes
-                            for i in 0..20 {
+                            for i in 0..10 {
                                 debug_hex(sector.data[i] as u32, b"");
                                 wait_exact_ns(MS_TO_NANO);
                             }

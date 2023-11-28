@@ -1,18 +1,12 @@
 use crate::fdd::fdd_read_index;
 use crate::timing;
 use core::arch::asm;
-use core::arch::global_asm;
-use teensycore::clock::F_CPU;
 use teensycore::prelude::*;
 
-const CYCLES_PER_MICRO: u32 = F_CPU / 1000000;
-const CLOCKS_PER_MICRO: u32 = CLOCK_CPU / 1000000;
-
-const T2: u32 = 2 * CYCLES_PER_MICRO;
-const T3: u32 = 3 * CYCLES_PER_MICRO;
-const T4: u32 = 4 * CYCLES_PER_MICRO;
-const T2_5: u32 = (CLOCKS_PER_MICRO * 5) / 2 / 1;
-const T3_5: u32 = (CLOCKS_PER_MICRO * 7) / 2 / 1;
+// const CYCLES_PER_MICRO: u32 = F_CPU / 1000000;
+const T2: u32 = 544; //1.375 * CYCLES_PER_MICRO;
+const T3: u32 = 940; //2.375 * CYCLES_PER_MICRO;
+const T4: u32 = 1336; //3.375 * CYCLES_PER_MICRO;
 
 /**
 This is a total hack. Read directly from the gpio register for pin 12.
@@ -24,11 +18,13 @@ fn read_data() -> u32 {
     return read_word(teensycore::phys::addrs::GPIO7) & (0x1 << 1);
 }
 
+#[inline]
 fn open_gate() {
     // Pull low
     assign(addrs::GPIO7 + 0x88, 0x1 << 11);
 }
 
+#[inline]
 fn close_gate() {
     // Pull high
     assign(addrs::GPIO7 + 0x84, 0x1 << 11);
@@ -69,10 +65,6 @@ pub enum Symbol {
 }
 
 impl Symbol {
-    fn is(&self, other: &Symbol) -> bool {
-        return *self as usize == *other as usize;
-    }
-
     fn from(count: i16) -> Self {
         return match count {
             0 => Self::Pulse10,
@@ -82,24 +74,7 @@ impl Symbol {
     }
 }
 
-static SYNC_PATTERN: [Symbol; 15] = [
-    Symbol::Pulse100,
-    Symbol::Pulse1000,
-    Symbol::Pulse100,
-    Symbol::Pulse1000,
-    Symbol::Pulse100,
-    Symbol::Pulse10,
-    Symbol::Pulse1000,
-    Symbol::Pulse100,
-    Symbol::Pulse1000,
-    Symbol::Pulse100,
-    Symbol::Pulse10,
-    Symbol::Pulse1000,
-    Symbol::Pulse100,
-    Symbol::Pulse1000,
-    Symbol::Pulse100,
-];
-
+#[cfg(not(testing))]
 pub fn mfm_read_sym() -> Symbol {
     return unsafe { Symbol::from(timing::read_sym()) };
 }
@@ -140,60 +115,20 @@ pub fn mfm_dump_stats() {
     debug_u64(pulse_1000 as u64, b"pulse_1000");
 }
 
-// /**
-//  * Read a flux transition and time it to one of the 3 known pulse types.
-//  */
-// #[no_mangle]
-// pub fn mfm_read_sym() -> Symbol {
-//     let mut pulses: u32 = 0;
-
-//     while read_data() == 0 {
-//         pulses += 6;
-//     }
-
-//     while read_data() > 0 {
-//         pulses += 6;
-//     }
-
-//     if pulses < T2_5 {
-//         return Symbol::Pulse10;
-//     } else if pulses > T3_5 {
-//         return Symbol::Pulse1000;
-//     } else {
-//         return Symbol::Pulse100;
-//     }
-// }
+pub fn mfm_read_flux(dst: &mut [Symbol; 4096], len: usize) {
+    for i in 0..len {
+        dst[i] = mfm_read_sym();
+    }
+}
 
 /**
  * Wait for a synchronization byte marker
  */
+#[cfg(not(testing))]
 pub fn mfm_sync() -> bool {
-    let mut short = 0;
-
-    while fdd_read_index() != 0 {
-        let sym = mfm_read_sym();
-        if sym.is(&Symbol::Pulse10) {
-            short += 1;
-        } else if short > 80 && sym.is(&SYNC_PATTERN[0]) {
-            let mut found = true;
-            for i in 1..SYNC_PATTERN.len() {
-                if !mfm_read_sym().is(&SYNC_PATTERN[i]) {
-                    found = false;
-                    break;
-                }
-            }
-
-            if !found {
-                short = 0;
-                continue;
-            } else {
-                return true;
-            }
-        } else {
-            short = 0;
-        }
+    unsafe {
+        return timing::mfm_sync();
     }
-    return false;
 }
 
 /**
@@ -285,7 +220,7 @@ pub fn mfm_prepare_write(bytes: &[u8], flux_signals: &mut [Symbol; 4096]) -> usi
         if (signal & mask) == 0 {
             // We will skip the first bit
             begin = 1;
-            mask >>= 1;
+            // mask >>= 1;
         };
 
         for _ in begin..16 {
@@ -293,7 +228,9 @@ pub fn mfm_prepare_write(bytes: &[u8], flux_signals: &mut [Symbol; 4096]) -> usi
             if bit > 0 && sym >= 0 {
                 flux_signals[signal_index] = Symbol::from(sym);
                 signal_index += 1;
-                sym = 0;
+                sym = -1;
+            } else if bit > 0 {
+                sym = -1;
             } else {
                 sym += 1;
             }
@@ -311,7 +248,7 @@ pub fn mfm_write_bytes(flux_signals: &[Symbol]) {
     open_gate();
     for sym in flux_signals {
         unsafe {
-            let target = match sym {
+            match sym {
                 Symbol::Pulse10 => timing::pulse(T2),
                 Symbol::Pulse100 => timing::pulse(T3),
                 Symbol::Pulse1000 => timing::pulse(T4),
@@ -331,6 +268,7 @@ fn mfm_encode_byte(byte: u8, next: u8) -> u16 {
         if x > 0 {
             ret |= mask;
         }
+
         mask >>= 1;
         bitmask >>= 1;
 
@@ -362,8 +300,10 @@ mod test_mfm {
     extern crate std;
 
     use crate::mfm::mfm_write_bytes;
+    use crate::mfm::Symbol;
 
     use super::mfm_encode_byte;
+    use super::mfm_prepare_write;
     use std::*;
 
     #[test]
@@ -371,9 +311,32 @@ mod test_mfm {
         let byte = 0x3A;
         assert_eq!(mfm_encode_byte(byte, 0x00), 0b0100101010001001);
         assert_eq!(mfm_encode_byte(byte, 0xFF), 0b0100101010001000);
+    }
 
-        let signal = mfm_encode_byte(0xC1, 0x7A);
+    #[test]
+    pub fn test_encoding() {
+        // Some tests
+        let mut flux_signals: [Symbol; 4096] = [Symbol::Pulse10; 4096];
+        let signal_counts = mfm_prepare_write(&[0x10], &mut flux_signals);
+        let signal = mfm_encode_byte(0x10, 0x00);
         println!("{}", format!("{signal:016b}").as_str());
+
+        for i in 0..signal_counts {
+            match flux_signals[i] {
+                Symbol::Pulse10 => {
+                    print!("S");
+                }
+                Symbol::Pulse100 => {
+                    print!("M");
+                }
+                Symbol::Pulse1000 => {
+                    print!("L");
+                }
+            }
+        }
+        print!("\n");
+
+        println!("{signal_counts}");
         assert!(false);
     }
 

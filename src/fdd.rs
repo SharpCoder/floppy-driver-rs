@@ -40,6 +40,7 @@ impl SectorID {
  * This is a total hack. It reads directly from the gpio register for pin 3.
  * Bypassing the pin_read method of teensycore because it's too slow.
  */
+#[no_mangle]
 pub fn fdd_read_index() -> u32 {
     return read_word(addrs::GPIO9) & (0x1 << 5);
 }
@@ -370,7 +371,7 @@ pub fn fdd_write_sector(head: u8, cylinder: u8, sector: u8, data: &[u8]) -> bool
                 if byte_buf[0] == 0xFB || byte_buf[0] == 0xFA {
                     // Write the data
                     // debug_str(b"Found sector");
-                    mfm_read_sym();
+
                     mfm_write_bytes(&flux_signals[0..signal_count]);
                     return true;
                 } else {
@@ -378,6 +379,47 @@ pub fn fdd_write_sector(head: u8, cylinder: u8, sector: u8, data: &[u8]) -> bool
                     debug_u64(byte_buf[0] as u64, b"byte_buf[0]");
                     return false;
                 }
+            }
+        }
+
+        if fdd_read_index() == 0 {
+            if latch == false {
+                error += 1;
+            }
+            latch = true;
+        } else {
+            latch = false;
+        }
+    }
+
+    return false;
+}
+
+pub fn fdd_debug_sector(
+    head: u8,
+    cylinder: u8,
+    sector: u8,
+    flux_signals: &mut [Symbol; 4096],
+    len: usize,
+) -> bool {
+    fdd_set_side(head);
+    fdd_set_track(cylinder);
+    let mut error = 0usize;
+    let mut buf: [u8; 15] = [0; 15];
+
+    // Prepare the data
+    let mut latch = false;
+    while error < 10 {
+        if (mfm_sync()) {
+            mfm_read_bytes(&mut buf);
+
+            // If we're on the wrong track, shimmy over to the correct one
+            if buf[0] == 0xFE && buf[1] != cylinder {
+                fdd_fix_track(cylinder, buf[1] as u8);
+            } else if buf[0] == 0xFE && buf[1] == cylinder && buf[2] == head && buf[3] == sector {
+                mfm_sync();
+                mfm_read_flux(flux_signals, len);
+                return true;
             }
         }
 
