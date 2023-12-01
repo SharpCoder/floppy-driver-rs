@@ -1,6 +1,7 @@
 #![allow(unused)]
 
 use crate::config::*;
+use crate::mfm;
 use crate::mfm::*;
 use core::arch::asm;
 use teensycore::prelude::*;
@@ -309,7 +310,7 @@ pub fn fdd_read_sector(head: u8, cylinder: u8, sector: u8) -> Option<SectorID> {
     let mut error = 0usize;
     let mut buf: [u8; 560] = [0; 560];
     let mut ret = SectorID::new();
-    let offset = 45;
+    let offset = 45 - 1;
     while error < 36 {
         if (mfm_sync()) {
             mfm_read_bytes(&mut buf);
@@ -369,20 +370,13 @@ pub fn fdd_write_sector(head: u8, cylinder: u8, sector: u8, data: &[u8]) -> bool
             if buf[0] == 0xFE && buf[1] != cylinder {
                 fdd_fix_track(cylinder, buf[1] as u8);
             } else if buf[0] == 0xFE && buf[1] == cylinder && buf[2] == head && buf[3] == sector {
-                mfm_sync();
-                mfm_read_bytes(&mut byte_buf);
-
-                if byte_buf[0] == 0xFB || byte_buf[0] == 0xFA {
-                    // Write the data
-                    // debug_str(b"Found sector");
-
-                    mfm_write_bytes(&flux_signals[0..signal_count]);
-                    return true;
-                } else {
-                    debug_str(b"Failed to synchronize the bytes");
-                    debug_u64(byte_buf[0] as u64, b"byte_buf[0]");
-                    return false;
+                // mfm::data_low();
+                // mfm_sync();
+                // mfm_write_bytes(&flux_signals[0..signal_count]);
+                unsafe {
+                    _asm_full_write_test();
                 }
+                return true;
             }
         }
 

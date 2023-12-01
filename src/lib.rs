@@ -43,12 +43,12 @@ teensycore::main!({
                 // 10 is ruined
                 let head = 0;
                 let cylinder = 11;
-                let sector = 16;
+                let sector = 9;
 
                 mfm_dump_stats();
 
                 // Wait for a barrier
-                if mfm::mfm_sync() || mfm::mfm_sync() {
+                if mfm::mfm_sync() {
                     debug_str(b"Found barrier!");
                 } else {
                     debug_str(b"Did not find a barrier");
@@ -58,15 +58,24 @@ teensycore::main!({
 
                 let mut flux_signals: [Symbol; 4096] = [Symbol::Pulse10; 4096];
                 const FLUX_COUNT: usize = 40;
+                // match fdd_read_sector(head, cylinder, sector) {
+                //     None => {
+                //         debug_str(b"Failed to find sector");
+                //     }
+                //     Some(sector) => {
+                //         debug_str(b"Found the sector!!");
 
-                // Write a sector
+                //         // Dump some bytes
+                //         for i in 0..10 {
+                //             debug_hex(sector.data[i] as u32, b"");
+                //             wait_exact_ns(MS_TO_NANO);
+                //         }
+                //     }
+                // }
+
+                // // Write a sector
                 debug_str(b"Beginning write seek...");
-                if fdd_write_sector(
-                    head,
-                    cylinder,
-                    sector,
-                    &[0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10],
-                ) {
+                if fdd_write_sector(head, cylinder, sector, &[0xFB, 0x13, 0x37, 0xA1, 0, 0]) {
                     debug_str(b"Write complete!");
                     // Debug a sector
                     match fdd_debug_sector(head, cylinder, sector, &mut flux_signals, FLUX_COUNT) {

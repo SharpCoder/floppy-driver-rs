@@ -3,11 +3,15 @@
 .extern read_data
 .extern data_high
 .extern data_low
+.extern open_gate
+.extern close_gate
 .extern fdd_read_index
 
 .global _asm_pulse
 .global _asm_read_sym
 .global _asm_sync
+.global _asm_full_write_test
+
 
 wait_cycle:
     push {{lr}}
@@ -38,6 +42,7 @@ _asm_read_sym:
     @ Load r1 with 0. This will be our pulse counter
     mov r1,#0
 
+
     @ Wait for the pin to be held low
     while_low:
         add r1,#5
@@ -45,6 +50,7 @@ _asm_read_sym:
         cmp r0,#0
         beq while_low
     
+
     @ Wait for the pin to be held high
     while_high:
         add r1,#5
@@ -78,7 +84,7 @@ _asm_read_sym:
 @ 12 bytes of 0x0 
 @ 3 bytes of 0xA1 
 _asm_sync:
-    push {{r1,r2,r3,lr}}
+    push {{r1,r2,lr}}
     mov r1, #0
 
     full_restart:
@@ -179,11 +185,87 @@ _asm_sync:
     bne full_restart
 
     mov r0,#1
-    pop {{r1,r2,r3,pc}}
+    pop {{r1,r2,pc}}
 
     @ This condition signifies that we've
     @ hit an index loop and must terminate
     @ during this cycle.
     err:
     mov r0,#0
-    pop {{r1,r2,r3,pc}}
+    pop {{r1,r2,pc}}
+
+
+
+pulse_10:
+    mov r0,#362
+    b _asm_pulse
+
+
+pulse_100:
+    mov r0,#470
+    b _asm_pulse
+
+
+pulse_1000:
+    mov r0,#890
+    b _asm_pulse
+
+
+_asm_full_write_test:
+    push {{lr}}
+    bl _asm_sync
+    bl open_gate
+    
+    # Wait a hot sec before opening the gate to stretch the first symbol
+    @ mov r0,#50
+    @ bl wait_cycle
+
+    bl _asm_test_write
+    bl close_gate 
+    pop {{pc}}
+
+_asm_test_write:
+    push {{lr}}
+
+    @ SSSS4 L1 S1 LLLL4 S1 L1 M1 SS2 M1 S1
+    @ SSSS4 L1 S1 LLLL4 S1 L1 M1 SS2 MM2 S1 MMM3 S1 MM2 S1 L1 SSS3
+
+    @ SSMSSSLSLLLLSLMSSMLSSMMSSSSSSSSSSSSSSLSS
+    @  SSSSLSLLLLSLMSSMS
+    @ SSSSSLSLLLLSLMSSMLLSSMMSSSSSSSSSSSSSSLSS
+    @ SSMSSSLSLLLLSLMSSMLSSMMSSSSSSSSSSSSSSLSS
+    @ SLSSSSLSLLLLSLMSSMLSSMMSSSSSSSSSSSSSSLSS
+    @ SLSSSSLSLLLLSLMSSMLSSMMSSSSSSSSSSSSSSLSS
+
+    @ bl pulse_10
+    bl pulse_10
+    bl pulse_10
+    bl pulse_10
+    bl pulse_1000
+    bl pulse_10
+    bl pulse_1000
+    bl pulse_1000
+    bl pulse_1000
+    bl pulse_1000
+    bl pulse_10
+    bl pulse_1000
+    bl pulse_100
+    bl pulse_10
+    bl pulse_10
+    bl pulse_100
+    bl pulse_100
+    bl pulse_10
+    bl pulse_100
+    bl pulse_100
+    bl pulse_100
+    bl pulse_10
+    bl pulse_100
+    bl pulse_100
+    bl pulse_10
+    bl pulse_1000
+    bl pulse_10
+    bl pulse_10
+    bl pulse_10
+
+
+    pop {{pc}}
