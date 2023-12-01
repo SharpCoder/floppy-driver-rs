@@ -36,7 +36,7 @@ do :
     arm-none-eabi-objcopy -O ihex out/kernel.elf out/$proj.hex
 
     # Dump the assembly
-    arm-none-eabi-objdump -d $elf > out/$proj.asm
+    # arm-none-eabi-objdump -d $elf > out/$proj.asm
 done
 
 # Remove artifacts

@@ -347,6 +347,12 @@ pub fn fdd_read_sector(head: u8, cylinder: u8, sector: u8) -> Option<SectorID> {
 }
 
 pub fn fdd_write_sector(head: u8, cylinder: u8, sector: u8, data: &[u8]) -> bool {
+    // Some basic validation
+    if data.len() > 512 {
+        debug_str(b"ERROR: Data array is too large");
+        teensycore::err(PanicType::Hardfault);
+    }
+
     // The algorithm will work like so:
     // First, seek the sector we want and then read the first 60 bytes
     // which are the metadata. Compare with target. If approved then
@@ -359,7 +365,7 @@ pub fn fdd_write_sector(head: u8, cylinder: u8, sector: u8, data: &[u8]) -> bool
     let mut flux_signals: [Symbol; 4096] = [Symbol::Pulse10; 4096];
 
     // Prepare the data
-    let signal_count = mfm_prepare_write(data, &mut flux_signals);
+    let signal_count = mfm_prepare_write(0xFB, data, &mut flux_signals);
     let mut latch = false;
 
     while error < 10 {
@@ -370,13 +376,10 @@ pub fn fdd_write_sector(head: u8, cylinder: u8, sector: u8, data: &[u8]) -> bool
             if buf[0] == 0xFE && buf[1] != cylinder {
                 fdd_fix_track(cylinder, buf[1] as u8);
             } else if buf[0] == 0xFE && buf[1] == cylinder && buf[2] == head && buf[3] == sector {
-                // mfm::data_low();
-                // mfm_sync();
-                // mfm_write_bytes(&flux_signals[0..signal_count]);
-                unsafe {
-                    _asm_full_write_test();
+                if (mfm_sync()) {
+                    mfm_write_bytes(&flux_signals[1..signal_count]);
+                    return true;
                 }
-                return true;
             }
         }
 

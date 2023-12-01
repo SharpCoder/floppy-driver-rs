@@ -91,14 +91,13 @@ _asm_sync:
     @ Check if we're past the index
     bl fdd_read_index
     cmp r0,#0
-    @ beq err
-    
+    beq err
 
     restart:
     @ If we encounter something that isn't a short pulse
     @ first check if we've collected enough to indicate
     @ that we're ready for signal processing.
-    cmp r1,#80
+    cmp r1,#60
     bge process_signal
     
     @ Otherwise, do the actual restart
@@ -215,11 +214,6 @@ _asm_full_write_test:
     push {{lr}}
     bl _asm_sync
     bl open_gate
-    
-    # Wait a hot sec before opening the gate to stretch the first symbol
-    @ mov r0,#50
-    @ bl wait_cycle
-
     bl _asm_test_write
     bl close_gate 
     pop {{pc}}

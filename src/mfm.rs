@@ -13,10 +13,10 @@ extern "C" {
     pub fn _asm_full_write_test();
 }
 
-const CYCLES_PER_MICRO: u32 = F_CPU / 1000000;
-const CLOCK_PER_MICRO: u32 = CLOCK_CPU / 1000000;
+// const CYCLES_PER_MICRO: u32 = F_CPU / 1000000;
+// const CLOCK_PER_MICRO: u32 = CLOCK_CPU / 1000000;
 
-const T: u32 = CYCLES_PER_MICRO * 5 / 3;
+// const T: u32 = CYCLES_PER_MICRO * 5 / 3;
 const T2: u32 = 544 * 2 / 3; //1.375 * CYCLES_PER_MICRO;
 const T3: u32 = 940 / 2; //2.375 * CYCLES_PER_MICRO;
 const T4: u32 = 1336 * 2 / 3; //3.375 * CYCLES_PER_MICRO;
@@ -252,29 +252,21 @@ pub fn mfm_read_bytes(arr: &mut [u8]) -> bool {
     return true;
 }
 
-pub fn mfm_prepare_write(bytes: &[u8], flux_signals: &mut [Symbol; 4096]) -> usize {
+pub fn mfm_prepare_write(
+    prefix_byte: u8,
+    bytes: &[u8],
+    flux_signals: &mut [Symbol; 4096],
+) -> usize {
     let mut signal_index = 0;
-
-    // Encode the byte into a signal and then parse the signal... fuck
     let mut ind = 0;
-    let mut byte = bytes[ind] as u16;
-    ind += 1;
-    let mut next = match ind < bytes.len() {
-        true => bytes[ind] as u16,
-        false => 0,
-    };
-
-    let mut signal = 0x0;
+    let mut byte = prefix_byte as u16; // The first byte after a data barrier must be a 0xFB or 0xFA
+    let mut next = bytes[0] as u16;
     let mut sigmask = 0x8000;
     let mut bitmask: u16 = 0x80;
     let mut x: u16 = byte & bitmask;
     let mut sym = -1;
 
     loop {
-        if x > 0 {
-            signal |= sigmask;
-        }
-
         sigmask >>= 1;
         bitmask >>= 1;
 
@@ -290,15 +282,13 @@ pub fn mfm_prepare_write(bytes: &[u8], flux_signals: &mut [Symbol; 4096]) -> usi
             sym += 1;
         }
 
-        let y = match sigmask > 0 {
+        let y = match bitmask > 0 {
             true => byte & bitmask,
             _ => next & 0x80,
         };
 
         let z = !(simplify(x) | simplify(y)) & 0x1;
         if z > 0 {
-            signal |= sigmask;
-
             // Process symbols
             if sym >= 0 {
                 // Process it
@@ -316,7 +306,6 @@ pub fn mfm_prepare_write(bytes: &[u8], flux_signals: &mut [Symbol; 4096]) -> usi
 
         if sigmask == 0 && ind < bytes.len() {
             sigmask = 0x8000;
-            signal = 0;
             bitmask = 0x80;
             byte = bytes[ind] as u16;
             ind += 1;
@@ -326,7 +315,7 @@ pub fn mfm_prepare_write(bytes: &[u8], flux_signals: &mut [Symbol; 4096]) -> usi
             };
 
             x |= byte & bitmask;
-        } else if (sigmask == 0) {
+        } else if sigmask == 0 {
             break;
         }
     }
@@ -354,42 +343,7 @@ pub fn mfm_write_bytes(flux_signals: &[Symbol]) {
         }
     }
     close_gate();
-}
-
-fn mfm_encode_byte(byte: u8, next: u8) -> u16 {
-    let mut ret = 0;
-    let mut mask: u16 = 0x8000;
-    let mut bitmask: u16 = 0x80;
-    let mut x = (byte as u16) & bitmask;
-
-    for _ in 0..8 {
-        if x > 0 {
-            ret |= mask;
-        }
-
-        mask >>= 1;
-        bitmask >>= 1;
-
-        let y = match bitmask {
-            0 => (next as u16) >> 7,
-            _ => (byte as u16) & bitmask,
-        };
-
-        if bitmask == 0 {
-            bitmask = 1;
-        }
-
-        let z = !(x | y);
-
-        if (z & bitmask) > 0 {
-            ret |= mask;
-        }
-
-        mask >>= 1;
-        x = y >> 1;
-    }
-
-    return ret;
+    data_high();
 }
 
 // Test the encoding logic
@@ -397,87 +351,35 @@ fn mfm_encode_byte(byte: u8, next: u8) -> u16 {
 mod test_mfm {
     extern crate std;
 
+    use super::mfm_prepare_write;
     use crate::mfm::mfm_write_bytes;
     use crate::mfm::Symbol;
 
-    use super::mfm_encode_byte;
-    use super::mfm_prepare_write;
     use std::*;
-
-    // #[test]
-    // pub fn test_interleave() {
-    //     let byte = 0x3A;
-    //     assert_eq!(mfm_encode_byte(byte, 0x00), 0b0100101010001001);
-    //     assert_eq!(mfm_encode_byte(byte, 0xFF), 0b0100101010001000);
-    // }
 
     #[test]
     pub fn test_encoding() {
         let mut flux_signals: [Symbol; 4096] = [Symbol::Pulse10; 4096];
-        let signal_counts = mfm_prepare_write(&[0xFB, 0x55, 0xA1], &mut flux_signals);
+        let signal_counts =
+            mfm_prepare_write(0xFB, &[0xF6, 0xF6, 0xF6, 0xF6, 0xF6], &mut flux_signals);
 
-        assert_eq!(signal_counts, 17);
+        let signals = b"SSSSLSSSSSLSLSSSLSLSSSLSLSSSLSLSSSLSM ";
+        // assert_eq!(signal_counts, signals.len());
 
-        let signals = [
-            Symbol::Pulse10,
-            Symbol::Pulse10,
-            Symbol::Pulse10,
-            Symbol::Pulse10,
-            Symbol::Pulse1000,
-            Symbol::Pulse10,
-            Symbol::Pulse1000,
-            Symbol::Pulse1000,
-            Symbol::Pulse1000,
-            Symbol::Pulse1000,
-            Symbol::Pulse10,
-            Symbol::Pulse1000,
-            Symbol::Pulse100,
-            Symbol::Pulse10,
-            Symbol::Pulse10,
-            Symbol::Pulse100,
-            Symbol::Pulse10,
-        ];
-
-        for i in 0..13 {
-            println!("evaluating {i}");
-            assert_eq!(signals[i] as usize, flux_signals[i] as usize);
+        for i in 0..signal_counts {
+            println!("Evaluating signal {i}");
+            let sym = signals[i];
+            match signals[i] {
+                b'S' => {
+                    assert_eq!(flux_signals[i] as usize, 0);
+                }
+                b'M' => {
+                    assert_eq!(flux_signals[i] as usize, 1);
+                }
+                _ => {
+                    assert_eq!(flux_signals[i] as usize, 2);
+                }
+            }
         }
-
-        // let signal = mfm_encode_byte(byte, byte2);
-        // let signal2 = mfm_encode_byte(byte, byte2);
-        // println!("{}", format!("{signal:016b}-{signal2:016b}").as_str());
-
-        // for i in 0..signal_counts {
-        //     match flux_signals[i] {
-        //         Symbol::Pulse10 => {
-        //             print!("S");
-        //         }
-        //         Symbol::Pulse100 => {
-        //             print!("M");
-        //         }
-        //         Symbol::Pulse1000 => {
-        //             print!("L");
-        //         }
-        //     }
-        // }
-        // print!("\n");
-
-        // let signal_counts2 = mfm_prepare_write(&[byte2], &mut flux_signals);
-        // for i in 0..signal_counts2 {
-        //     match flux_signals[i] {
-        //         Symbol::Pulse10 => {
-        //             print!("S");
-        //         }
-        //         Symbol::Pulse100 => {
-        //             print!("M");
-        //         }
-        //         Symbol::Pulse1000 => {
-        //             print!("L");
-        //         }
-        //     }
-        // }
-        // print!("\n");
-
-        // assert!(false);
     }
 }

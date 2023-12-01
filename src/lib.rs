@@ -9,7 +9,7 @@ mod mfm;
 
 use core::arch::asm;
 use fdd::*;
-use mfm::{mfm_dump_stats, Symbol};
+use mfm::mfm_dump_stats;
 use teensycore::prelude::*;
 
 #[cfg(feature = "testing")]
@@ -42,83 +42,33 @@ teensycore::main!({
 
                 // 10 is ruined
                 let head = 0;
-                let cylinder = 11;
-                let sector = 9;
+                let cylinder = 9;
+                let sector = 6;
 
                 mfm_dump_stats();
 
-                // Wait for a barrier
-                if mfm::mfm_sync() {
-                    debug_str(b"Found barrier!");
-                } else {
-                    debug_str(b"Did not find a barrier");
-                    fdd_shutdown();
-                    loop {}
-                }
-
-                let mut flux_signals: [Symbol; 4096] = [Symbol::Pulse10; 4096];
-                const FLUX_COUNT: usize = 40;
-                // match fdd_read_sector(head, cylinder, sector) {
-                //     None => {
-                //         debug_str(b"Failed to find sector");
-                //     }
-                //     Some(sector) => {
-                //         debug_str(b"Found the sector!!");
-
-                //         // Dump some bytes
-                //         for i in 0..10 {
-                //             debug_hex(sector.data[i] as u32, b"");
-                //             wait_exact_ns(MS_TO_NANO);
-                //         }
-                //     }
-                // }
-
                 // // Write a sector
                 debug_str(b"Beginning write seek...");
-                if fdd_write_sector(head, cylinder, sector, &[0xFB, 0x13, 0x37, 0xA1, 0, 0]) {
+                if fdd_write_sector(head, cylinder, sector, &[0xF6; 512]) {
                     debug_str(b"Write complete!");
-                    // Debug a sector
-                    match fdd_debug_sector(head, cylinder, sector, &mut flux_signals, FLUX_COUNT) {
-                        false => {
-                            debug_str(b"Failed to find sector after write operation");
-                        }
-                        _ => {
-                            let mut pulses: [u8; FLUX_COUNT] = [0; FLUX_COUNT];
-                            for i in 0..FLUX_COUNT {
-                                match flux_signals[i] {
-                                    Symbol::Pulse10 => {
-                                        pulses[i] = b'S';
-                                    }
-                                    Symbol::Pulse100 => {
-                                        pulses[i] = b'M';
-                                    }
-                                    Symbol::Pulse1000 => {
-                                        pulses[i] = b'L';
-                                    }
-                                }
-                            }
-
-                            debug_str(&pulses);
-                        }
-                    }
-
-                    // Read a sector
-                    match fdd_read_sector(head, cylinder, sector) {
-                        None => {
-                            debug_str(b"Failed to find sector");
-                        }
-                        Some(sector) => {
-                            debug_str(b"Found the sector!!");
-
-                            // Dump some bytes
-                            for i in 0..10 {
-                                debug_hex(sector.data[i] as u32, b"");
-                                wait_exact_ns(MS_TO_NANO);
-                            }
-                        }
-                    }
                 } else {
                     debug_str(b"Failed to write");
+                }
+
+                // Read a sector
+                match fdd_read_sector(head, cylinder, sector) {
+                    None => {
+                        debug_str(b"Failed to find sector");
+                    }
+                    Some(sector) => {
+                        debug_str(b"Found the sector!!");
+
+                        // Dump some bytes
+                        for i in 0..10 {
+                            debug_hex(sector.data[i] as u32, b"");
+                            wait_exact_ns(MS_TO_NANO);
+                        }
+                    }
                 }
             }
             None => {
