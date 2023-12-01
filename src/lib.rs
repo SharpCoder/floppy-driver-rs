@@ -42,18 +42,23 @@ teensycore::main!({
 
                 // 10 is ruined
                 let head = 0;
-                let cylinder = 9;
-                let sector = 6;
+                let cylinder = 20;
+                let sector = 2;
 
                 mfm_dump_stats();
 
+                // Fix the current cylinder
+                // for s in 2..18 {
+                //     fdd_write_sector(head, cylinder, s, &[0xF6; 512]);
+                // }
+
                 // // Write a sector
-                debug_str(b"Beginning write seek...");
-                if fdd_write_sector(head, cylinder, sector, &[0xF6; 512]) {
-                    debug_str(b"Write complete!");
-                } else {
-                    debug_str(b"Failed to write");
-                }
+                // debug_str(b"Beginning write seek...");
+                // if fdd_write_sector(head, cylinder, sector, &[0x55; 512]) {
+                //     debug_str(b"Write complete!");
+                // } else {
+                //     debug_str(b"Failed to write");
+                // }
 
                 // Read a sector
                 match fdd_read_sector(head, cylinder, sector) {

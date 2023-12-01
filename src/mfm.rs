@@ -16,7 +16,6 @@ extern "C" {
 // const CYCLES_PER_MICRO: u32 = F_CPU / 1000000;
 // const CLOCK_PER_MICRO: u32 = CLOCK_CPU / 1000000;
 
-// const T: u32 = CYCLES_PER_MICRO * 5 / 3;
 const T2: u32 = 544 * 2 / 3; //1.375 * CYCLES_PER_MICRO;
 const T3: u32 = 940 / 2; //2.375 * CYCLES_PER_MICRO;
 const T4: u32 = 1336 * 2 / 3; //3.375 * CYCLES_PER_MICRO;

@@ -310,7 +310,7 @@ pub fn fdd_read_sector(head: u8, cylinder: u8, sector: u8) -> Option<SectorID> {
     let mut error = 0usize;
     let mut buf: [u8; 560] = [0; 560];
     let mut ret = SectorID::new();
-    let offset = 45 - 1;
+    let offset = 45; // Overhead of the SectorID
     while error < 36 {
         if (mfm_sync()) {
             mfm_read_bytes(&mut buf);
