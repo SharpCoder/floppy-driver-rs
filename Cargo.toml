@@ -11,4 +11,4 @@ path = "src/lib.rs"
 testing = []
 
 [dependencies]
-teensycore = { path = "../teensycore" }
+teensycore = "^0.0.15"
