@@ -21,19 +21,19 @@ teensycore::main!({
 
     // Create the floppy driver
     fdd_init();
+    fdd_set_motor(true);
 
     wait_exact_ns(MS_TO_NANO * 2000);
 
     match fdd_read_write_protect() {
-        true => debug_str(b"Media is write protected"),
-        false => debug_str(b"Media is not write protected"),
+        true => debug_str(b"Media is not write protected"),
+        false => debug_str(b"Media is write protected"),
     }
 
     wait_exact_ns(MS_TO_NANO * 1000);
 
     loop {
         fdd_set_motor(true);
-
         match fdd_seek_track00() {
             Some(cycles) => {
                 print(b"Found track0 in ");
@@ -48,9 +48,9 @@ teensycore::main!({
                 mfm_dump_stats();
 
                 // Fix the current cylinder
-                // for s in 2..18 {
-                //     fdd_write_sector(head, cylinder, s, &[0xF6; 512]);
-                // }
+                for s in 2..18 {
+                    fdd_write_sector(head, cylinder, s, &[0x66; 512]);
+                }
 
                 // // Write a sector
                 // debug_str(b"Beginning write seek...");

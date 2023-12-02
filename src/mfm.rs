@@ -14,8 +14,6 @@ extern "C" {
 }
 
 // const CYCLES_PER_MICRO: u32 = F_CPU / 1000000;
-// const CLOCK_PER_MICRO: u32 = CLOCK_CPU / 1000000;
-
 const T2: u32 = 544 * 2 / 3; //1.375 * CYCLES_PER_MICRO;
 const T3: u32 = 940 / 2; //2.375 * CYCLES_PER_MICRO;
 const T4: u32 = 1336 * 2 / 3; //3.375 * CYCLES_PER_MICRO;
@@ -251,6 +249,12 @@ pub fn mfm_read_bytes(arr: &mut [u8]) -> bool {
     return true;
 }
 
+/***
+ * This method will take a prefix byte and an array of
+ * data and convert it into flux signals.
+ *
+ * NOTE: The prefix byte should always be 0xFA or 0xFB
+ */
 pub fn mfm_prepare_write(
     prefix_byte: u8,
     bytes: &[u8],
@@ -328,6 +332,11 @@ pub fn mfm_prepare_write(
     return signal_index;
 }
 
+/**
+ * This method will commit a series of flux signals to the floppy disk,
+ * but it assumes you're already in the right spot. Be sure to call
+ * mfm_sync() before invoking this method.
+ */
 #[no_mangle]
 #[inline(never)]
 pub fn mfm_write_bytes(flux_signals: &[Symbol]) {
@@ -362,8 +371,8 @@ mod test_mfm {
         let signal_counts =
             mfm_prepare_write(0xFB, &[0xF6, 0xF6, 0xF6, 0xF6, 0xF6], &mut flux_signals);
 
-        let signals = b"SSSSLSSSSSLSLSSSLSLSSSLSLSSSLSLSSSLSM ";
-        // assert_eq!(signal_counts, signals.len());
+        let signals = b"SSSSLSSSSSLSLSSSLSLSSSLSLSSSLSLSSSLSM";
+        assert_eq!(signal_counts, signals.len());
 
         for i in 0..signal_counts {
             println!("Evaluating signal {i}");
