@@ -15,6 +15,25 @@ floppy disk.
 
 This project is built off my own kernel, [teensycore](https://github.com/SharpCoder/teensycore).
 
+## Wiring
+
+Here is the mapping between the teensy and the direct floppy drive. **NOTE** If you are using a cable, some pins will be reversed. Please pay careful attention to how the floppy "twist" works. Here's a website [detailing the cable twist](http://www.interfacebus.com/PC_Floppy_Drive_PinOut.html).
+
+| Teensy Pin # | Floppy Pin # | Function Name     |
+|--------------|--------------|-------------------|
+| 3            | 8            | INDEX             |
+| 4            | 12           | DRIVE SELECT      |
+| 5            | 16           | MOTOR ON          |
+| 6            | 18           | DIRECTION SELECT  |
+| 7            | 20           | STEP              |
+| 8            | 22           | WRITE DATA        |
+| 9            | 24           | WRITE GATE        |
+| 10           | 26           | TRACK 00          |
+| 11           | 28           | WRITE PROTECT     |
+| 12           | 30           | READ DATA         |
+| 14           | 32           | HEAD SELECT       |
+| 15           | 34           | READY/DISK CHANGE |
+
 ## Installation
 
 To properly build on a Linux machine, you'll need the following:
