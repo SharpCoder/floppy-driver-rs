@@ -1,6 +1,6 @@
 [package]
 name = "floppy-driver-rs"
-version = "0.1.0"
+version = "0.0.1"
 edition = "2021"
 
 [lib]
@@ -11,4 +11,4 @@ path = "src/lib.rs"
 testing = []
 
 [dependencies]
-teensycore = "^0.0.15"
+teensycore = { version = "0.1.0" }

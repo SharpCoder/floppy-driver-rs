@@ -17,9 +17,8 @@ extern crate std;
 
 #[cfg(not(feature = "testing"))]
 teensycore::main!({
-    wait_exact_ns(MS_TO_NANO * 2000);
+    wait_exact_ns(MS_TO_NANO * 3000);
 
-    // Create the floppy driver
     fdd_init();
     fdd_set_motor(true);
 
@@ -40,17 +39,11 @@ teensycore::main!({
                 print_u32(cycles as u32);
                 print(b" cycles!\n");
 
-                // 10 is ruined
                 let head = 0;
-                let cylinder = 20;
+                let cylinder = 7;
                 let sector = 2;
 
                 mfm_dump_stats();
-
-                // Fix the current cylinder
-                for s in 2..18 {
-                    fdd_write_sector(head, cylinder, s, &[0x66; 512]);
-                }
 
                 // // Write a sector
                 // debug_str(b"Beginning write seek...");

@@ -13,7 +13,7 @@ dependencies = [
 
 [[package]]
 name = "floppy-driver-rs"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "teensycore",
 ]
@@ -26,9 +26,9 @@ checksum = "89d92a4743f9a61002fae18374ed11e7973f530cb3a3255fb354818118b2203c"
 
 [[package]]
 name = "teensycore"
-version = "0.0.15"
+version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ffec6f65c41bbeefb79288d66a78152714ee39f216a5699a7c31a37936ae3b79"
+checksum = "9dbbb5f5118d3c1921c859c7a6a6bf7c8fefddf5827ddbd7970999c4763bff3b"
 dependencies = [
  "cc",
 ]

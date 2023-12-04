@@ -124,7 +124,7 @@ pub fn fdd_init() {
     // Create a generic configuration for pullup resistors
     let pullup_config: PadConfig = PadConfig {
         hysterisis: false,
-        resistance: PullUpDown::PullUp47k,
+        resistance: PullUpDown::PullUp22k,
         pull_keep: PullKeep::Pull,
         pull_keep_en: true,
         open_drain: true,
@@ -158,11 +158,8 @@ pub fn fdd_set_motor(on: bool) {
     }
 
     if on {
-        // Turn on the motor
         pin_out(MOTOR_PIN, Power::Low);
-        // Select the drive
         fdd_drive_select();
-        // Seek to 0
         match fdd_seek_track00() {
             None => {
                 debug_str(b"Failed power-on calibration");
@@ -187,8 +184,6 @@ pub fn fdd_set_motor(on: bool) {
 
     debug_str(b"Spinning up motor");
     debug_str(b"Waiting for index pulse...");
-
-    // Do a step
 
     let start = nanos();
     while fdd_read_index() > 0 && (nanos() - start) < 10000 * MS_TO_NANO {
@@ -307,6 +302,7 @@ pub fn fdd_read_sector(head: u8, cylinder: u8, sector: u8) -> Option<SectorID> {
     fdd_set_track(cylinder);
     fdd_set_side(head);
 
+    let mut latch = false;
     let mut error = 0usize;
     let mut buf: [u8; 560] = [0; 560];
     let mut ret = SectorID::new();
@@ -336,10 +332,12 @@ pub fn fdd_read_sector(head: u8, cylinder: u8, sector: u8) -> Option<SectorID> {
         }
 
         if fdd_read_index() == 0 {
-            while fdd_read_index() == 0 {
-                assembly!("nop");
+            if latch == false {
+                latch = true;
+                error += 1;
             }
-            error += 1;
+        } else {
+            latch = false;
         }
     }
 
@@ -354,7 +352,7 @@ pub fn fdd_write_sector(head: u8, cylinder: u8, sector: u8, data: &[u8]) -> bool
     }
 
     // The algorithm will work like so:
-    // First, seek the sector we want and then read the first 60 bytes
+    // First, seek the sector we want and then read the first 15 bytes
     // which are the metadata. Compare with target. If approved then
     // write based on timing.
     fdd_set_side(head);
@@ -377,6 +375,8 @@ pub fn fdd_write_sector(head: u8, cylinder: u8, sector: u8, data: &[u8]) -> bool
                 fdd_fix_track(cylinder, buf[1] as u8);
             } else if buf[0] == 0xFE && buf[1] == cylinder && buf[2] == head && buf[3] == sector {
                 if (mfm_sync()) {
+                    // Remember to skip the first pulse because it's already held high from
+                    // the barrier.
                     mfm_write_bytes(&flux_signals[1..signal_count]);
                     return true;
                 }

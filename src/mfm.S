@@ -193,17 +193,17 @@ _asm_sync:
     mov r0,#0
     pop {{r0,r1,pc}}
 
-
+@ Unused. Kept for examples sake
 pulse_10:
     mov r0,#362
     b _asm_pulse
 
-
+@ Unused. Kept for examples sake
 pulse_100:
     mov r0,#470
     b _asm_pulse
 
-
+@ Unused. Kept for examples sake
 pulse_1000:
     mov r0,#890
     b _asm_pulse
